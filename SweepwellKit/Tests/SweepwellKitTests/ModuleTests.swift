@@ -105,4 +105,39 @@ final class ModuleTests: XCTestCase {
         XCTAssertTrue((0...1).contains(snapshot.cpuUsage))
         XCTAssertGreaterThan(ProcessList.sample().count, 10)
     }
+
+    func testExtraReadingsArePlausibleOnThisMac() throws {
+        let pressure = try XCTUnwrap(MemoryPressure.current())
+        XCTAssertTrue((0...1).contains(pressure))
+
+        let first = NetworkCounters.current()
+        XCTAssertGreaterThan(first.received, 0, "a Mac that has been online has received something on en*")
+        XCTAssertGreaterThanOrEqual(NetworkCounters.current().received, first.received)
+
+        if let temperature = ThermalSensors()?.cpuTemperature() {
+            print("CPU temperature: \(temperature) °C")
+            XCTAssertTrue((15...115).contains(temperature), "\(temperature)")
+        } else {
+            print("CPU temperature: sensors not available")
+        }
+        if let battery = BatteryHealth.current() {
+            print("Battery: \(battery.cycleCount) cycles, \(Int(battery.capacity * 100))% capacity")
+            XCTAssertTrue((0.3...1).contains(battery.capacity))
+        }
+        print("Volumes:", ExternalVolume.mounted().map(\.name))
+    }
+
+    func testHealthScoreReflectsTheWorstProblems() {
+        var snapshot = SystemSnapshot()
+        snapshot.diskTotal = 1000; snapshot.diskAvailable = 500
+        XCTAssertEqual(HealthAssessment.assess(snapshot).grade, .good)
+        XCTAssertEqual(HealthAssessment.assess(snapshot).score, 100)
+
+        snapshot.diskAvailable = 50
+        snapshot.memoryPressure = 0.9
+        let bad = HealthAssessment.assess(snapshot, brokenLaunchItems: 1)
+        XCTAssertEqual(bad.score, 40)
+        XCTAssertEqual(bad.grade, .poor)
+        XCTAssertEqual(bad.concerns.first, "Startup disk is almost full")
+    }
 }

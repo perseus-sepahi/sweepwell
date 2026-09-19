@@ -17,12 +17,23 @@ A native Apple silicon Mac cleaner and maintenance app, built with SwiftUI.
 Also: a menu bar monitor, a settings window (⌘,), and day and night themes. **Auto** (the default)
 follows the macOS appearance; the switch at the bottom of the sidebar forces Day or Night.
 
+## Menu bar panel and glass
+
+Clicking the ✦ menu bar icon opens a summary: a health score, storage, memory pressure, battery
+(with capacity and cycle count), processor load and temperature, network throughput, connected
+drives with eject, and one suggestion based on what Sweepwell has found locally. There is no
+speed test or update check, because Sweepwell makes no network connections.
+
+The **Glass** slider (sidebar and Settings) runs from solid cards to Liquid Glass. It needs
+macOS 26 or later for real glass; older systems get a material-based approximation. The panel
+always stays frosted, because unblurred glass over other windows' text is unreadable.
+
 ## Always there
 
 Sweepwell opens at login (on by default once it lives in an Applications folder; toggle in
 Settings → Startup, or in System Settings → General → Login Items) and starts quietly in the
-menu bar. Closing the window leaves the ✦ menu bar icon running without a Dock icon; **Quit**
-in the menu bar panel (or ⌘Q) stops it. `Sweepwell --login-item-status` prints what macOS has on file.
+menu bar. Closing the window leaves the ✦ menu bar icon running without a Dock icon; the power
+button in the menu bar panel (or ⌘Q) stops it. `Sweepwell --login-item-status` prints what macOS has on file.
 
 ## Safety model
 

@@ -16,6 +16,15 @@ public struct SystemSnapshot: Sendable {
     public var batteryCharging = false
     public var uptime: TimeInterval = 0
     public var thermalState: ProcessInfo.ThermalState = .nominal
+    /// 0…1, the kernel's own view of how squeezed memory is (not the same as "used").
+    public var memoryPressure: Double = 0
+    /// °C, nil when the sensors are not readable on this Mac.
+    public var cpuTemperature: Double?
+    /// Bytes per second over the physical network interfaces.
+    public var networkIn: Double = 0
+    public var networkOut: Double = 0
+    public var batteryCycles: Int?
+    public var batteryHealth: Double?
 
     public init() {}
 
@@ -28,6 +37,9 @@ public struct SystemSnapshot: Sendable {
 /// sampler alive and call `sample()` on a timer.
 public final class SystemSampler: @unchecked Sendable {
     private var previousTicks: (busy: UInt64, total: UInt64)?
+    private var previousNetwork: (counters: NetworkCounters, time: Date)?
+    private var cachedBattery: (health: BatteryHealth?, time: Date)?
+    private let thermal = ThermalSensors()
     private let lock = NSLock()
 
     public init() {}
@@ -40,7 +52,38 @@ public final class SystemSampler: @unchecked Sendable {
         readBattery(into: &snapshot)
         snapshot.uptime = ProcessInfo.processInfo.systemUptime
         snapshot.thermalState = ProcessInfo.processInfo.thermalState
+        snapshot.memoryPressure = MemoryPressure.current() ?? snapshot.memoryFraction
+        snapshot.cpuTemperature = thermal?.cpuTemperature()
+        readNetwork(into: &snapshot)
+        readBatteryHealth(into: &snapshot)
         return snapshot
+    }
+
+    private func readNetwork(into snapshot: inout SystemSnapshot) {
+        let now = Date()
+        let counters = NetworkCounters.current()
+        lock.withLock {
+            defer { previousNetwork = (counters, now) }
+            guard let previous = previousNetwork else { return }
+            let elapsed = now.timeIntervalSince(previous.time)
+            // Counters restart when an interface is re-created; never report that as traffic.
+            guard elapsed > 0.2, counters.received >= previous.counters.received,
+                  counters.sent >= previous.counters.sent else { return }
+            snapshot.networkIn = Double(counters.received - previous.counters.received) / elapsed
+            snapshot.networkOut = Double(counters.sent - previous.counters.sent) / elapsed
+        }
+    }
+
+    /// Cycle count and capacity move over weeks, so one registry read a minute is plenty.
+    private func readBatteryHealth(into snapshot: inout SystemSnapshot) {
+        let health: BatteryHealth? = lock.withLock {
+            if let cached = cachedBattery, Date().timeIntervalSince(cached.time) < 60 { return cached.health }
+            let fresh = BatteryHealth.current()
+            cachedBattery = (fresh, Date())
+            return fresh
+        }
+        snapshot.batteryCycles = health?.cycleCount
+        snapshot.batteryHealth = health?.capacity
     }
 
     private func cpuUsage() -> Double {

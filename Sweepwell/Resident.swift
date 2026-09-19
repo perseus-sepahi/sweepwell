@@ -47,6 +47,11 @@ final class LoginItem {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let loginItem = LoginItem()
+    /// Scene actions only exist inside SwiftUI; the root view hands them over on first
+    /// appearance so AppKit-side code (the status panel) can open windows too.
+    static var openMainWindow: (() -> Void)?
+    static var openSettingsWindow: (() -> Void)?
+    private var statusPanel: StatusPanelController?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
@@ -56,6 +61,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NotificationCenter.default.addObserver(self, selector: #selector(windowWillClose),
                                                name: NSWindow.willCloseNotification, object: nil)
+        statusPanel = StatusPanelController(model: .shared)
+        let hooks = ProcessInfo.processInfo.environment
+        if hooks["SWEEPWELL_OPEN_PANEL"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { self.statusPanel?.show() }
+        }
+        if hooks["SWEEPWELL_TEST_REOPEN"] == "1" {
+            // UI check: the window was closed at launch; prove it can come back.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Self.showMainWindow() }
+        }
         if Self.wasLaunchedAtLogin {
             // Started by macOS at login: stay out of the way, in the menu bar only.
             DispatchQueue.main.async {
@@ -89,10 +103,93 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Brings the main window back from menu-bar-only mode.
-    @MainActor static func showMainWindow(using openWindow: OpenWindowAction) {
+    static func showMainWindow() {
         NSApp.setActivationPolicy(.regular)
-        openWindow(id: "main")
+        if let existing = contentWindows.first(where: { $0.identifier?.rawValue.hasPrefix("main") ?? false }) {
+            existing.makeKeyAndOrderFront(nil)
+        } else {
+            openMainWindow?()
+        }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    static func showSettings() {
+        NSApp.setActivationPolicy(.regular)
+        openSettingsWindow?()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+// MARK: - Status item and panel
+
+/// A panel that can take keyboard focus even though it has no title bar, so the controls
+/// inside it behave normally.
+private final class KeyPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
+/// The menu bar icon and the summary panel under it. Hand-rolled instead of `MenuBarExtra`
+/// because Liquid Glass needs a truly transparent window behind it, which MenuBarExtra's
+/// system-owned panel does not offer.
+@MainActor
+final class StatusPanelController: NSObject {
+    // Variable length keeps the item as narrow as its glyph: on a crowded menu bar next to the
+    // notch, a few points decide whether macOS shows the icon or folds it into the « overflow.
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let panel: KeyPanel
+    private let hosting: NSHostingView<AnyView>
+    private var outsideClickMonitor: Any?
+
+    init(model: AppModel) {
+        panel = KeyPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        hosting = NSHostingView(rootView: AnyView(EmptyView()))
+        super.init()
+
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        // The window server would trace the transparent margin with its shadow; the glass
+        // draws its own instead.
+        panel.hasShadow = false
+        panel.level = .popUpMenu
+        panel.collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary]
+        panel.isReleasedWhenClosed = false
+        panel.contentView = hosting
+        hosting.rootView = AnyView(MenuPanelView(dismiss: { [weak self] in self?.close() }).environment(model))
+
+        if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Sweepwell")
+            button.imagePosition = .imageOnly
+            button.target = self
+            button.action = #selector(toggle)
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(panelResignedKey),
+                                               name: NSWindow.didResignKeyNotification, object: panel)
+    }
+
+    @objc private func toggle() { panel.isVisible ? close() : show() }
+
+    func show() {
+        guard let buttonWindow = statusItem.button?.window else { return }
+        let size = hosting.fittingSize
+        let anchor = buttonWindow.frame
+        let screen = buttonWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        // Centred under the icon, but never hanging off the edge of the screen.
+        let x = min(max(anchor.midX - size.width / 2, screen.minX + 8), screen.maxX - size.width - 8)
+        panel.setFrame(NSRect(x: x, y: anchor.minY - size.height - 6, width: size.width, height: size.height), display: true)
+        panel.makeKeyAndOrderFront(nil)
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in self?.close() }
+        }
+    }
+
+    func close() {
+        panel.orderOut(nil)
+        if let monitor = outsideClickMonitor { NSEvent.removeMonitor(monitor) }
+        outsideClickMonitor = nil
+    }
+
+    @objc private func panelResignedKey() {
+        if ProcessInfo.processInfo.environment["SWEEPWELL_OPEN_PANEL"] != "1" { close() }
     }
 }
 

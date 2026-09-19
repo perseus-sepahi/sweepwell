@@ -5,7 +5,7 @@ import SweepwellKit
 @main
 struct SweepwellApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @State private var model = AppModel()
+    @State private var model = AppModel.shared
 
     init() {
         // `Sweepwell --login-item-status`: report what macOS has on file, then exit.
@@ -43,14 +43,5 @@ struct SweepwellApp: App {
         Settings {
             SettingsView().environment(model)
         }
-
-        // Always present: the menu bar icon is how Sweepwell stays reachable once its window
-        // is closed, and it only goes away when the user quits.
-        MenuBarExtra {
-            MenuBarView().environment(model)
-        } label: {
-            Image(systemName: "sparkles")
-        }
-        .menuBarExtraStyle(.window)
     }
 }

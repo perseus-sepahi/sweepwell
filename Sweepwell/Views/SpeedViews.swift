@@ -204,6 +204,7 @@ struct SettingsView: View {
                 .onChange(of: appearance) { _, new in AppearanceMode(rawValue: new)?.apply() }
                 Text("Auto follows macOS, so Sweepwell turns dark when your Mac does.")
                     .font(.caption).foregroundStyle(.secondary)
+                GlassSlider()
             }
             Section("Removing files") {
                 Picker("When cleaning", selection: $removalMode) {
@@ -250,56 +251,5 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 520, height: 600)
         .onAppear { AppDelegate.loginItem.refresh() }
-    }
-}
-
-// MARK: - Menu bar
-
-struct MenuBarView: View {
-    @Environment(AppModel.self) private var app
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        let s = app.snapshot
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "sparkles").foregroundStyle(Module.overview.gradient)
-                Text("Sweepwell").font(.headline)
-                Spacer()
-                Text("up \(Format.uptime(s.uptime))").font(.caption).foregroundStyle(.secondary)
-            }
-            meter("Processor", s.cpuUsage, "\(Int((s.cpuUsage * 100).rounded()))%", Module.startup)
-            meter("Memory", s.memoryFraction, "\(Format.bytes(s.memoryUsed)) used", Module.largeFiles)
-            meter("Storage", s.diskFraction, "\(Format.bytes(s.diskAvailable)) free", Module.spaceLens)
-            if let battery = s.batteryLevel {
-                meter("Battery", battery, "\(Int((battery * 100).rounded()))%\(s.batteryCharging ? " · charging" : "")", Module.maintenance)
-            }
-            Divider()
-            HStack {
-                Button("Open Sweepwell") { show(.overview, scan: false) }
-                Button("Smart Scan") { show(.overview, scan: true) }.buttonStyle(.borderedProminent).tint(Module.overview.colors[1])
-                Spacer()
-                Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
-            }
-        }
-        .padding(14)
-        .frame(width: 290)
-    }
-
-    private func show(_ module: Module, scan: Bool) {
-        app.selection = module
-        AppDelegate.showMainWindow(using: openWindow)
-        if scan { app.smartScan() }
-    }
-
-    private func meter(_ title: String, _ value: Double, _ caption: String, _ module: Module) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(title).font(.caption.weight(.semibold))
-                Spacer()
-                Text(caption).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-            }
-            ProgressView(value: min(1, max(0, value))).tint(module.accent)
-        }
     }
 }

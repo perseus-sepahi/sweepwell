@@ -3,6 +3,8 @@ import SweepwellKit
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         HStack(spacing: 0) {
@@ -19,6 +21,10 @@ struct RootView: View {
             .animation(.easeInOut(duration: 0.3), value: model.selection)
         }
         .ignoresSafeArea()
+        .onAppear {
+            AppDelegate.openMainWindow = { openWindow(id: "main") }
+            AppDelegate.openSettingsWindow = { openSettings() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refreshAccess()
         }
@@ -73,6 +79,7 @@ struct Sidebar: View {
                     .padding(.leading, 8)
             }
             DiskSummary().padding(.horizontal, 8).padding(.top, 8)
+            GlassSlider(compact: true).padding(.horizontal, 14).padding(.top, 8)
             AppearanceSwitch().padding(8)
         }
         .padding(.horizontal, 10)

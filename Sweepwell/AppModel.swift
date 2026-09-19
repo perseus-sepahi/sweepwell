@@ -6,6 +6,7 @@ enum Preferences {
     static let removalModeKey = "removalMode"
     static let largeFileThresholdKey = "largeFileThresholdMB"
     static let appearanceKey = "appearance"
+    static let glassKey = "glassiness"
 
     static var removalMode: RemovalMode {
         RemovalMode(rawValue: UserDefaults.standard.string(forKey: removalModeKey) ?? "") ?? .trash
@@ -24,10 +25,17 @@ enum Phase: Equatable {
 
 @MainActor @Observable
 final class AppModel {
+    /// One model for the window and the menu bar panel, which lives outside SwiftUI's scenes.
+    static let shared = AppModel()
+
     let environment = ScanEnvironment.live
     var selection: Module = .overview
     var hasFullDiskAccess = true
     var snapshot = SystemSnapshot()
+    var volumes: [ExternalVolume] = []
+    /// Recent network samples (bytes/s), oldest first, for the menu bar panel's sparkline.
+    var networkHistory: [(down: Double, up: Double)] = []
+    var panelMessage: String?
 
     let junk: JunkModel
     let largeFiles: LargeFilesModel
@@ -56,11 +64,15 @@ final class AppModel {
         if arguments["SWEEPWELL_AUTOCLEAN"] == "1", environment.isFixture { autoCleanWhenReady() }
 
         refreshAccess()
+        startup.refresh()   // cheap, and the health score wants to know about broken items
         monitor = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 let sampler = self.sampler
-                self.snapshot = await Task.detached { sampler.sample() }.value
+                let (snapshot, volumes) = await Task.detached { (sampler.sample(), ExternalVolume.mounted()) }.value
+                self.snapshot = snapshot
+                self.volumes = volumes
+                self.networkHistory = Array((self.networkHistory + [(snapshot.networkIn, snapshot.networkOut)]).suffix(40))
                 try? await Task.sleep(for: .seconds(2))
             }
         }
@@ -101,6 +113,68 @@ final class AppModel {
         case .uninstaller: uninstaller.scan()
         case .startup: startup.refresh()
         case .maintenance: break
+        }
+    }
+
+    // MARK: Menu bar panel
+
+    var health: HealthAssessment { .assess(snapshot, brokenLaunchItems: startup.brokenCount) }
+
+    struct Recommendation {
+        let symbol: String
+        let title: String
+        let detail: String
+        let actionTitle: String?
+        let module: Module
+        var startsScan = false
+    }
+
+    /// One suggestion, from what Sweepwell can see locally. Most urgent rule wins.
+    var recommendation: Recommendation {
+        let s = snapshot
+        if s.diskTotal > 0, s.diskFraction > 0.85 {
+            return .init(symbol: "internaldrive.fill", title: "Make room on your disk",
+                         detail: "Only \(Format.bytes(s.diskAvailable)) is left. A junk scan usually finds the quickest savings.",
+                         actionTitle: "Find Junk", module: .junk, startsScan: true)
+        }
+        if junk.phase == .results, junk.selectedSize > 500 << 20 {
+            return .init(symbol: "bubbles.and.sparkles", title: "Clean \(Format.bytes(junk.selectedSize)) of junk",
+                         detail: "Your last scan found caches and leftovers that are safe to remove.",
+                         actionTitle: "Review & Clean", module: .junk)
+        }
+        if startup.brokenCount > 0 {
+            return .init(symbol: "bolt.slash.fill", title: "Remove \(startup.brokenCount) broken startup item\(startup.brokenCount == 1 ? "" : "s")",
+                         detail: "They belong to apps that are gone, and macOS still tries to launch them.",
+                         actionTitle: "Show Them", module: .startup)
+        }
+        if s.memoryPressure > 0.75 {
+            return .init(symbol: "memorychip.fill", title: "Memory is under pressure",
+                         detail: "See which apps are using the most and quit the ones you do not need.",
+                         actionTitle: "Show Apps", module: .startup)
+        }
+        if s.uptime > 10 * 86_400 {
+            return .init(symbol: "arrow.clockwise.circle.fill", title: "Restart your Mac",
+                         detail: "It has been up for \(Format.uptime(s.uptime)). A restart clears swap and stuck background processes.",
+                         actionTitle: nil, module: .overview)
+        }
+        if junk.phase == .idle {
+            return .init(symbol: "sparkles", title: "Run a Smart Scan",
+                         detail: "Nothing has been checked this session. It takes a moment and removes nothing on its own.",
+                         actionTitle: "Smart Scan", module: .overview, startsScan: true)
+        }
+        return .init(symbol: "checkmark.seal.fill", title: "Everything looks tidy",
+                     detail: "No junk worth cleaning, no broken startup items, and plenty of room.",
+                     actionTitle: nil, module: .overview)
+    }
+
+    func eject(_ volume: ExternalVolume) {
+        Task {
+            let error = await background { () -> String? in
+                do { try NSWorkspace.shared.unmountAndEjectDevice(at: volume.url); return nil }
+                catch { return error.localizedDescription }
+            }
+            panelMessage = error.map { "Could not eject \(volume.name): \($0)" }
+            if error == nil { volumes.removeAll { $0.id == volume.id } }
         }
     }
 
