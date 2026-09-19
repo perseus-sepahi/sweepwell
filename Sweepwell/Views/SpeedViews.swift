@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 import SweepwellKit
 
 // MARK: - Startup & Activity
@@ -191,7 +192,6 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var app
     @AppStorage(Preferences.removalModeKey) private var removalMode = RemovalMode.trash.rawValue
     @AppStorage(Preferences.largeFileThresholdKey) private var threshold = 100
-    @AppStorage(Preferences.showMenuBarKey) private var showMenuBar = true
     @AppStorage(Preferences.appearanceKey) private var appearance = AppearanceMode.auto.rawValue
 
     var body: some View {
@@ -218,8 +218,23 @@ struct SettingsView: View {
                     ForEach([50, 100, 250, 500, 1024], id: \.self) { Text(Format.bytes(Int64($0) << 20)).tag($0) }
                 }
             }
-            Section("Menu bar") {
-                Toggle("Show the Sweepwell monitor in the menu bar", isOn: $showMenuBar)
+            Section("Startup") {
+                let login = AppDelegate.loginItem
+                Toggle("Open Sweepwell when I log in", isOn: Binding(get: { login.isEnabled }, set: { login.set($0) }))
+                    .disabled(!LoginItem.isInstalled)
+                if !LoginItem.isInstalled {
+                    Text("Move Sweepwell to the Applications folder first. A login item remembers where the app lives.")
+                        .font(.caption).foregroundStyle(Color.warning)
+                } else if login.needsApproval {
+                    HStack {
+                        Text("macOS is waiting for you to allow this in Login Items.").font(.caption).foregroundStyle(Color.warning)
+                        Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }.controlSize(.small)
+                    }
+                } else if let error = login.lastError {
+                    Text(error).font(.caption).foregroundStyle(Color.danger)
+                }
+                Text("At login Sweepwell starts quietly in the menu bar. Closing the window keeps it there; choose Quit from the menu bar icon to stop it.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Privacy") {
                 LabeledContent("Full Disk Access") {
@@ -233,7 +248,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 540)
+        .frame(width: 520, height: 600)
+        .onAppear { AppDelegate.loginItem.refresh() }
     }
 }
 
@@ -261,8 +277,9 @@ struct MenuBarView: View {
             Divider()
             HStack {
                 Button("Open Sweepwell") { show(.overview, scan: false) }
-                Spacer()
                 Button("Smart Scan") { show(.overview, scan: true) }.buttonStyle(.borderedProminent).tint(Module.overview.colors[1])
+                Spacer()
+                Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
             }
         }
         .padding(14)
@@ -271,8 +288,7 @@ struct MenuBarView: View {
 
     private func show(_ module: Module, scan: Bool) {
         app.selection = module
-        openWindow(id: "main")
-        NSApp.activate(ignoringOtherApps: true)
+        AppDelegate.showMainWindow(using: openWindow)
         if scan { app.smartScan() }
     }
 

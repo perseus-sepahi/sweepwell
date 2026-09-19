@@ -5,7 +5,6 @@ import SweepwellKit
 enum Preferences {
     static let removalModeKey = "removalMode"
     static let largeFileThresholdKey = "largeFileThresholdMB"
-    static let showMenuBarKey = "showMenuBarMonitor"
     static let appearanceKey = "appearance"
 
     static var removalMode: RemovalMode {

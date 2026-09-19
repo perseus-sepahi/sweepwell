@@ -17,6 +17,13 @@ A native Apple silicon Mac cleaner and maintenance app, built with SwiftUI.
 Also: a menu bar monitor, a settings window (⌘,), and day and night themes. **Auto** (the default)
 follows the macOS appearance; the switch at the bottom of the sidebar forces Day or Night.
 
+## Always there
+
+Sweepwell opens at login (on by default once it lives in an Applications folder; toggle in
+Settings → Startup, or in System Settings → General → Login Items) and starts quietly in the
+menu bar. Closing the window leaves the ✦ menu bar icon running without a Dock icon; **Quit**
+in the menu bar panel (or ⌘Q) stops it. `Sweepwell --login-item-status` prints what macOS has on file.
+
 ## Safety model
 
 - Removal goes to the **Trash by default** (Settings can switch to immediate deletion).

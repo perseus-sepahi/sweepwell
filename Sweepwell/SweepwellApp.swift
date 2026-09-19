@@ -1,17 +1,27 @@
 import SwiftUI
+import ServiceManagement
 import SweepwellKit
 
 @main
 struct SweepwellApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
-    @AppStorage(Preferences.showMenuBarKey) private var showMenuBar = true
+
+    init() {
+        // `Sweepwell --login-item-status`: report what macOS has on file, then exit.
+        if CommandLine.arguments.contains("--login-item-status") {
+            let names = ["notRegistered", "enabled", "requiresApproval", "notFound"]
+            let status = SMAppService.mainApp.status
+            print("login item: \(names.indices.contains(status.rawValue) ? names[status.rawValue] : "unknown") (installed copy: \(LoginItem.isInstalled))")
+            exit(0)
+        }
+    }
 
     var body: some Scene {
         Window("Sweepwell", id: "main") {
             RootView()
                 .environment(model)
                 .frame(minWidth: 1020, minHeight: 680)
-                .onAppear { AppearanceMode.stored.apply() }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1140, height: 740)
@@ -34,7 +44,9 @@ struct SweepwellApp: App {
             SettingsView().environment(model)
         }
 
-        MenuBarExtra(isInserted: $showMenuBar) {
+        // Always present: the menu bar icon is how Sweepwell stays reachable once its window
+        // is closed, and it only goes away when the user quits.
+        MenuBarExtra {
             MenuBarView().environment(model)
         } label: {
             Image(systemName: "sparkles")
