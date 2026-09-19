@@ -72,13 +72,13 @@ private struct LaunchItemRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle().fill(item.isBroken ? Color.red : (item.isLoaded ? Color.green : Color.gray.opacity(0.5))).frame(width: 8, height: 8)
+            Circle().fill(item.isBroken ? Color.danger : (item.isLoaded ? Color.success : Color.gray.opacity(0.5))).frame(width: 8, height: 8)
                 .help(item.isBroken ? "Program is missing" : (item.isLoaded ? "Loaded" : "Not loaded"))
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(item.label).lineLimit(1).truncationMode(.middle)
-                    if item.isBroken { badge("Broken", .red) }
-                    badge(item.scope.rawValue, .white)
+                    if item.isBroken { badge("Broken", .danger) }
+                    badge(item.scope.rawValue, .secondary)
                 }
                 Text(item.program ?? "No program listed").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             }
@@ -150,6 +150,7 @@ struct MaintenanceView: View {
 private struct TaskCard: View {
     @Environment(AppModel.self) private var app
     let task: MaintenanceTask
+    @State private var hovering = false
 
     var body: some View {
         let status = app.maintenance.status[task]
@@ -169,7 +170,7 @@ private struct TaskCard: View {
                 case .running: ProgressView().controlSize(.small)
                 case .finished(let ok, let message):
                     Label(message, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.caption).foregroundStyle(ok ? Module.maintenance.accent : .orange).lineLimit(2)
+                        .font(.caption).foregroundStyle(ok ? Color.success : Color.warning).lineLimit(2)
                 case nil: EmptyView()
                 }
                 Spacer()
@@ -178,7 +179,9 @@ private struct TaskCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 138, alignment: .topLeading)
-        .card()
+        .card(highlighted: hovering)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.2), value: hovering)
     }
 }
 
@@ -189,9 +192,19 @@ struct SettingsView: View {
     @AppStorage(Preferences.removalModeKey) private var removalMode = RemovalMode.trash.rawValue
     @AppStorage(Preferences.largeFileThresholdKey) private var threshold = 100
     @AppStorage(Preferences.showMenuBarKey) private var showMenuBar = true
+    @AppStorage(Preferences.appearanceKey) private var appearance = AppearanceMode.auto.rawValue
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Theme", selection: $appearance) {
+                    ForEach(AppearanceMode.allCases) { Label($0.title, systemImage: $0.symbol).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: appearance) { _, new in AppearanceMode(rawValue: new)?.apply() }
+                Text("Auto follows macOS, so Sweepwell turns dark when your Mac does.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Removing files") {
                 Picker("When cleaning", selection: $removalMode) {
                     Text("Move to Trash (can be undone)").tag(RemovalMode.trash.rawValue)
@@ -211,7 +224,7 @@ struct SettingsView: View {
             Section("Privacy") {
                 LabeledContent("Full Disk Access") {
                     HStack {
-                        Text(app.hasFullDiskAccess ? "Granted" : "Not granted").foregroundStyle(app.hasFullDiskAccess ? .green : .yellow)
+                        Text(app.hasFullDiskAccess ? "Granted" : "Not granted").foregroundStyle(app.hasFullDiskAccess ? Color.success : Color.warning)
                         Button("Open Settings") { NSWorkspace.shared.open(FullDiskAccess.settingsURL) }
                     }
                 }
@@ -220,7 +233,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 430)
+        .frame(width: 520, height: 540)
     }
 }
 

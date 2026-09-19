@@ -8,16 +8,15 @@ struct RootView: View {
         HStack(spacing: 0) {
             Sidebar()
             ZStack {
-                LinearGradient(colors: [.canvasTop, .canvasBottom], startPoint: .top, endPoint: .bottom)
-                // A soft glow in the module's colour gives each section its own mood.
-                RadialGradient(colors: [model.selection.accent.opacity(0.22), .clear], center: .topTrailing,
-                               startRadius: 10, endRadius: 620)
+                AuroraBackground(module: model.selection)
                 VStack(spacing: 0) {
                     if !model.hasFullDiskAccess { AccessBanner() }
                     moduleView
+                        .id(model.selection)
+                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 10)), removal: .opacity))
                 }
             }
-            .animation(.easeInOut(duration: 0.35), value: model.selection)
+            .animation(.easeInOut(duration: 0.3), value: model.selection)
         }
         .ignoresSafeArea()
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -45,7 +44,10 @@ struct Sidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 9) {
-                Image(systemName: "sparkles").font(.system(size: 15, weight: .bold)).foregroundStyle(Module.overview.gradient)
+                Image(systemName: "sparkles").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(Module.overview.gradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .shadow(color: Module.overview.accent.opacity(0.5), radius: 6, y: 2)
                 Text("Sweepwell").font(.system(size: 17, weight: .bold, design: .rounded))
             }
             .padding(.leading, 12)
@@ -64,18 +66,25 @@ struct Sidebar: View {
             Spacer()
             if model.environment.isFixture {
                 Label("Demo folder", systemImage: "testtube.2")
-                    .font(.caption.weight(.semibold)).foregroundStyle(.yellow)
+                    .font(.caption.weight(.semibold)).foregroundStyle(Color.warning)
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(.yellow.opacity(0.12), in: Capsule())
+                    .background(Color.warning.opacity(0.14), in: Capsule())
                     .help(model.environment.home.path)
                     .padding(.leading, 8)
             }
-            DiskSummary().padding(8)
+            DiskSummary().padding(.horizontal, 8).padding(.top, 8)
+            AppearanceSwitch().padding(8)
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
-        .frame(width: 224)
-        .background(Color.sidebar)
+        .frame(width: 228)
+        .background {
+            ZStack {
+                VibrantBackground()
+                Color.sidebarTint
+            }
+        }
+        .overlay(alignment: .trailing) { Color.hairline.frame(width: 1) }
     }
 }
 
@@ -92,18 +101,59 @@ private struct SidebarRow: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(module.gradient))
                     .frame(width: 26, height: 26)
-                    .background(selected ? AnyShapeStyle(module.gradient) : AnyShapeStyle(.white.opacity(0.06)),
+                    .background(selected ? AnyShapeStyle(module.gradient) : AnyShapeStyle(Color.hoverFill),
                                 in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .shadow(color: selected ? module.accent.opacity(0.5) : .clear, radius: 5, y: 2)
                 Text(module.title).font(.system(size: 13, weight: selected ? .semibold : .regular))
                 Spacer()
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(.white.opacity(selected ? 0.10 : (hovering ? 0.05 : 0)), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .background(selected ? Color.selectionFill : (hovering ? Color.hoverFill : .clear),
+                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .focusable(false)
         .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovering)
+        .animation(.spring(duration: 0.3), value: selected)
+    }
+}
+
+/// Day / Auto / Night. Auto follows the macOS appearance, including its sunset schedule.
+private struct AppearanceSwitch: View {
+    @AppStorage(Preferences.appearanceKey) private var stored = AppearanceMode.auto.rawValue
+    @Namespace private var thumb
+
+    var body: some View {
+        let current = AppearanceMode(rawValue: stored) ?? .auto
+        HStack(spacing: 2) {
+            ForEach(AppearanceMode.allCases) { mode in
+                Button {
+                    withAnimation(.spring(duration: 0.3)) { stored = mode.rawValue }
+                    mode.apply()
+                } label: {
+                    Label(mode.title, systemImage: mode.symbol)
+                        .labelStyle(.iconOnly)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(current == mode ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                        .background {
+                            if current == mode {
+                                Capsule().fill(Color.surfaceRaised)
+                                    .shadow(color: .cardShadow, radius: 3, y: 1)
+                                    .matchedGeometryEffect(id: "thumb", in: thumb)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .help(mode == .auto ? "Follow macOS: light by day, dark at night" : "\(mode.title) theme")
+            }
+        }
+        .padding(3)
+        .background(Color.track, in: Capsule())
     }
 }
 
@@ -117,19 +167,19 @@ private struct DiskSummary: View {
                 Label("Macintosh HD", systemImage: "internaldrive").font(.caption.weight(.semibold))
                 Spacer()
             }
-            ProgressView(value: snapshot.diskFraction).tint(snapshot.diskFraction > 0.9 ? .red : Module.spaceLens.accent)
+            ProgressView(value: snapshot.diskFraction).tint(snapshot.diskFraction > 0.9 ? Color.danger : Module.spaceLens.accent)
             Text("\(Format.bytes(snapshot.diskAvailable)) free of \(Format.bytes(snapshot.diskTotal))")
                 .font(.caption2).foregroundStyle(.secondary)
         }
         .padding(10)
-        .card(cornerRadius: 10)
+        .card(cornerRadius: 12)
     }
 }
 
 struct AccessBanner: View {
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "lock.shield").font(.title3).foregroundStyle(.yellow)
+            Image(systemName: "lock.shield.fill").font(.title3).foregroundStyle(Color.warning)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Sweepwell can only see part of your disk").font(.callout.weight(.semibold))
                 Text("Grant Full Disk Access to include the Trash, Mail downloads, Safari caches and protected app data in scans.")
@@ -137,11 +187,12 @@ struct AccessBanner: View {
             }
             Spacer()
             Button("Open Privacy Settings") { NSWorkspace.shared.open(FullDiskAccess.settingsURL) }
-                .buttonStyle(PillButtonStyle(prominent: true, tint: .yellow))
+                .buttonStyle(PillButtonStyle(prominent: true, tint: .warning))
         }
         .padding(.horizontal, 28)
         .padding(.top, 36)
         .padding(.bottom, 12)
-        .background(.yellow.opacity(0.08))
+        .background(Color.warning.opacity(0.10))
+        .overlay(alignment: .bottom) { Color.warning.opacity(0.25).frame(height: 1) }
     }
 }

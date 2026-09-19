@@ -144,7 +144,7 @@ private struct ItemRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.name).lineLimit(1).truncationMode(.middle)
                 if let note = item.note {
-                    Text(note).font(.caption).foregroundStyle(.yellow.opacity(0.85)).lineLimit(2)
+                    Text(note).font(.caption).foregroundStyle(Color.warning).lineLimit(2)
                 }
             }
             Spacer()

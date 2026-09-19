@@ -82,7 +82,7 @@ struct SpaceLensView: View {
                 Spacer()
                 if model.inaccessible > 0 {
                     Label("\(model.inaccessible) folders not readable", systemImage: "lock")
-                        .font(.caption).foregroundStyle(.yellow.opacity(0.8))
+                        .font(.caption).foregroundStyle(Color.warning)
                         .help("Grant Full Disk Access in System Settings to include them.")
                 }
                 Text(Format.bytes(current.size)).font(.callout.monospacedDigit().weight(.semibold))
@@ -130,7 +130,7 @@ private struct NodeRow: View {
                     Text(Format.bytes(node.size)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
                 GeometryReader { proxy in
-                    Capsule().fill(.white.opacity(0.07))
+                    Capsule().fill(Color.track)
                         .overlay(alignment: .leading) {
                             Capsule().fill(Module.spaceLens.gradient)
                                 .frame(width: max(2, proxy.size.width * CGFloat(node.size) / CGFloat(max(parentSize, 1))))
@@ -143,7 +143,7 @@ private struct NodeRow: View {
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
-        .background(.white.opacity(selected ? 0.12 : 0), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(selected ? Color.selectionFill : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contentShape(Rectangle())
         .gesture(TapGesture(count: 2).onEnded { model.open(node) }
             .exclusively(before: TapGesture().onEnded { model.highlighted = node }))
@@ -157,9 +157,12 @@ private struct TreemapView: View {
     let node: DiskNode
     @State private var hover: CGPoint?
 
+    /// White labels sit on these, so the day values are deep enough to carry them.
     private static let palette: [Color] = [
-        Color(hex: 0x43D9F0), Color(hex: 0x5AA2FF), Color(hex: 0x7B5CF5), Color(hex: 0xB07CFF), Color(hex: 0xF062B5),
-        Color(hex: 0xFF7A59), Color(hex: 0xFFA14A), Color(hex: 0xF7D34B), Color(hex: 0x5FCB6B), Color(hex: 0x35E0B2)
+        Color(day: 0x0E96B0, night: 0x43D9F0), Color(day: 0x2F78E0, night: 0x5AA2FF), Color(day: 0x6A45E8, night: 0x7B5CF5),
+        Color(day: 0x8F52E6, night: 0xB07CFF), Color(day: 0xD63F97, night: 0xF062B5), Color(day: 0xE8552F, night: 0xFF7A59),
+        Color(day: 0xE07A1F, night: 0xFFA14A), Color(day: 0xC99400, night: 0xF7D34B), Color(day: 0x2F9E44, night: 0x5FCB6B),
+        Color(day: 0x0FA37F, night: 0x35E0B2)
     ]
 
     /// Blocks under a fraction of a percent cannot be seen or clicked; the list still has them.
@@ -180,11 +183,11 @@ private struct TreemapView: View {
                 for (index, rect) in rects.enumerated() {
                     let block = blocks[index]
                     let color = Self.palette[index % Self.palette.count]
-                    let frame = rect.insetBy(dx: 1.5, dy: 1.5)
+                    let frame = rect.insetBy(dx: 2, dy: 2)
                     guard frame.width > 1, frame.height > 1 else { continue }
                     let isSelected = model.highlighted === block
-                    context.fill(Path(roundedRect: frame, cornerRadius: 5),
-                                 with: .color(color.opacity(isSelected ? 0.95 : (hovered == index ? 0.8 : 0.6))))
+                    context.fill(Path(roundedRect: frame, cornerRadius: 7),
+                                 with: .color(color.opacity(isSelected ? 1 : (hovered == index ? 0.92 : 0.8))))
 
                     if block.isDirectory, frame.width > 40, frame.height > 40 {
                         let inner = frame.insetBy(dx: 4, dy: 4).offsetBy(dx: 0, dy: 8).insetBy(dx: 0, dy: 8)
@@ -192,7 +195,7 @@ private struct TreemapView: View {
                         let innerRects = Treemap.layout(grandchildren.map { Double($0.size) }, in: inner)
                         for (i, r) in innerRects.enumerated() where r.width > 3 && r.height > 3 {
                             context.fill(Path(roundedRect: r.insetBy(dx: 0.75, dy: 0.75), cornerRadius: 3),
-                                         with: .color(.black.opacity(i.isMultiple(of: 2) ? 0.16 : 0.26)))
+                                         with: .color(.black.opacity(i.isMultiple(of: 2) ? 0.10 : 0.20)))
                         }
                     }
                     if isSelected {
@@ -218,6 +221,6 @@ private struct TreemapView: View {
             }))
             .help(hovered.map { "\(blocks[$0].name) — \(Format.bytes(blocks[$0].size))" } ?? "")
         }
-        .background(.black.opacity(0.25))
+        .background(Color.well)
     }
 }

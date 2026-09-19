@@ -10,8 +10,8 @@ struct SweepwellApp: App {
         Window("Sweepwell", id: "main") {
             RootView()
                 .environment(model)
-                .preferredColorScheme(.dark)
                 .frame(minWidth: 1020, minHeight: 680)
+                .onAppear { AppearanceMode.stored.apply() }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1140, height: 740)
@@ -31,11 +31,11 @@ struct SweepwellApp: App {
         }
 
         Settings {
-            SettingsView().environment(model).preferredColorScheme(.dark)
+            SettingsView().environment(model)
         }
 
         MenuBarExtra(isInserted: $showMenuBar) {
-            MenuBarView().environment(model).preferredColorScheme(.dark)
+            MenuBarView().environment(model)
         } label: {
             Image(systemName: "sparkles")
         }

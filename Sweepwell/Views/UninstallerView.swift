@@ -83,7 +83,7 @@ private struct AppRow: View {
             Text(Format.bytes(item.totalSize)).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
-        .background(.white.opacity(selected ? 0.12 : 0), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(selected ? Color.selectionFill : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { model.selectedAppID = item.id; model.keptLeftovers = [] }
     }
@@ -130,7 +130,7 @@ private struct AppDetail: View {
             }
             HStack {
                 if running != nil {
-                    Label("\(item.name) is running", systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.yellow)
+                    Label("\(item.name) is running", systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(Color.warning)
                     Button("Quit It") { running?.terminate() }.buttonStyle(PillButtonStyle())
                 }
                 Spacer()
@@ -150,7 +150,7 @@ private struct AppDetail: View {
             FileIcon(url: icon, size: 20)
             Text(name).lineLimit(1).truncationMode(.middle)
             Text(location).font(.caption).foregroundStyle(.secondary)
-                .padding(.horizontal, 6).padding(.vertical, 1).background(.white.opacity(0.07), in: Capsule())
+                .padding(.horizontal, 6).padding(.vertical, 1).background(Color.track, in: Capsule())
             Spacer()
             Text(Format.bytes(size)).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
         }

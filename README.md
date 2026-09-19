@@ -14,7 +14,8 @@ A native Apple silicon Mac cleaner and maintenance app, built with SwiftUI.
 | Startup & Activity | Launch agents and daemons (flags broken ones), top memory consumers |
 | Maintenance | Flush DNS, free inactive memory, thin snapshots, rebuild Spotlight, reset Quick Look, and more |
 
-Also: a menu bar monitor and a settings window (⌘,).
+Also: a menu bar monitor, a settings window (⌘,), and day and night themes. **Auto** (the default)
+follows the macOS appearance; the switch at the bottom of the sidebar forces Day or Night.
 
 ## Safety model
 
@@ -50,7 +51,8 @@ SWEEPWELL_HOME=/tmp/sweepwell-demo dist/Sweepwell.app/Contents/MacOS/Sweepwell
 ```
 
 With `SWEEPWELL_HOME` set the app shows a "Demo folder" badge, only looks inside that folder,
-and keeps trashed items in the folder's own `.Trash`.
+and keeps trashed items in the folder's own `.Trash`. `SWEEPWELL_THEME=light|dark` forces a theme
+for one launch without changing the saved choice.
 
 ## Layout
 

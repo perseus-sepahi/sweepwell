@@ -93,17 +93,20 @@ private struct GaugeTile: View {
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                Circle().stroke(.white.opacity(0.08), lineWidth: 8)
+                Circle().stroke(Color.track, lineWidth: 8)
                 if let value {
                     Circle().trim(from: 0, to: max(0.002, min(1, value)))
                         .stroke(AngularGradient(colors: colors + [colors[0]], center: .center),
                                 style: StrokeStyle(lineWidth: 8, lineCap: .round))
                         .rotationEffect(.degrees(-90))
+                        .shadow(color: colors[0].opacity(0.55), radius: 6)
                         .animation(.easeOut(duration: 0.8), value: value)
                 }
                 VStack(spacing: 1) {
                     Text(centerText ?? "\(Int(((value ?? 0) * 100).rounded()))%")
                         .font(.system(size: centerText == nil ? 21 : 15, weight: .bold, design: .rounded)).monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.4), value: value)
                     Image(systemName: symbol).font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -122,6 +125,7 @@ private struct ResultTile: View {
     let module: Module
     let value: String
     let caption: String
+    @State private var hovering = false
 
     var body: some View {
         Button { model.selection = module } label: {
@@ -137,9 +141,13 @@ private struct ResultTile: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, minHeight: 130, alignment: .topLeading)
-            .card()
+            .card(highlighted: hovering)
             .contentShape(Rectangle())
+            .scaleEffect(hovering ? 1.015 : 1)
         }
         .buttonStyle(.plain)
+        .focusable(false)
+        .onHover { hovering = $0 }
+        .animation(.spring(duration: 0.3), value: hovering)
     }
 }

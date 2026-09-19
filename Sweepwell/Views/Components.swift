@@ -11,19 +11,21 @@ struct ModuleScaffold<Content: View, Footer: View>: View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
                 Image(systemName: module.symbol)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 21, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .background(module.gradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .frame(width: 46, height: 46)
+                    .background(module.gradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(.white.opacity(0.3)))
+                    .shadow(color: module.accent.opacity(0.45), radius: 12, y: 5)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(module.title).font(.system(size: 22, weight: .bold, design: .rounded))
+                    Text(module.title).font(.system(size: 24, weight: .bold, design: .rounded))
                     Text(module.tagline).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
             }
             .padding(.horizontal, 28)
-            .padding(.top, 22)
-            .padding(.bottom, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 18)
 
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -38,29 +40,51 @@ extension ModuleScaffold where Footer == EmptyView {
     }
 }
 
-/// The big round call-to-action in the middle of an idle module.
+/// The big round call-to-action in the middle of an idle module: a glossy sphere with
+/// halo rings that breathe, so the screen never feels static while it waits for a click.
 struct OrbButton: View {
     let title: String
     let module: Module
     var diameter: CGFloat = 132
     let action: () -> Void
     @State private var hovering = false
+    @State private var breathing = false
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: diameter * 0.17, weight: .bold, design: .rounded))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white)
-                .frame(width: diameter, height: diameter)
-                .background(module.gradient, in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1.5))
-                .shadow(color: module.accent.opacity(hovering ? 0.75 : 0.45), radius: hovering ? 30 : 20, y: 8)
-                .scaleEffect(hovering ? 1.04 : 1)
+            ZStack {
+                ForEach(0..<2, id: \.self) { ring in
+                    Circle()
+                        .stroke(module.accent.opacity(breathing ? 0 : 0.35), lineWidth: 1.5)
+                        .frame(width: diameter, height: diameter)
+                        .scaleEffect(breathing ? 1.55 + CGFloat(ring) * 0.25 : 1)
+                        .animation(.easeOut(duration: 2.8).repeatForever(autoreverses: false).delay(Double(ring) * 1.2),
+                                   value: breathing)
+                }
+                Circle().fill(module.gradient)
+                    .overlay {
+                        // Gloss: a soft highlight top-left, as if lit from above.
+                        Circle().fill(RadialGradient(colors: [.white.opacity(0.55), .clear], center: .init(x: 0.32, y: 0.22),
+                                                     startRadius: 2, endRadius: diameter * 0.6))
+                    }
+                    .overlay(Circle().strokeBorder(.white.opacity(0.45), lineWidth: 1.5))
+                    .frame(width: diameter, height: diameter)
+                    .shadow(color: module.accent.opacity(hovering ? 0.8 : 0.5), radius: hovering ? 34 : 22, y: 10)
+                Text(title)
+                    .font(.system(size: diameter * 0.17, weight: .bold, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+            }
+            .frame(width: diameter * 1.9, height: diameter * 1.35)
+            .scaleEffect(hovering ? 1.05 : 1)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .onHover { hovering = $0 }
-        .animation(.spring(duration: 0.3), value: hovering)
+        .onAppear { breathing = true }
+        .animation(.spring(duration: 0.35), value: hovering)
     }
 }
 
@@ -78,6 +102,7 @@ struct IdleView: View {
                 .font(.system(size: 64, weight: .light))
                 .foregroundStyle(module.gradient)
                 .symbolRenderingMode(.hierarchical)
+                .shadow(color: module.accent.opacity(0.4), radius: 18, y: 6)
             VStack(spacing: 10) {
                 Text(headline).font(.system(size: 24, weight: .bold, design: .rounded))
                 VStack(alignment: .leading, spacing: 6) {
@@ -107,12 +132,20 @@ struct ScanningView: View {
         VStack(spacing: 24) {
             Spacer()
             ZStack {
-                Circle().stroke(.white.opacity(0.08), lineWidth: 10)
+                Circle().stroke(Color.track, lineWidth: 10)
                 Circle().trim(from: 0, to: 0.3)
                     .stroke(module.gradient, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                     .rotationEffect(.degrees(spin ? 360 : 0))
                     .animation(.linear(duration: 1.1).repeatForever(autoreverses: false), value: spin)
-                Image(systemName: module.symbol).font(.system(size: 40, weight: .light)).foregroundStyle(module.gradient)
+                    .shadow(color: module.accent.opacity(0.6), radius: 8)
+                Circle().trim(from: 0, to: 0.18)
+                    .stroke(module.colors[1].opacity(0.7), style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .padding(16)
+                    .rotationEffect(.degrees(spin ? -360 : 0))
+                    .animation(.linear(duration: 1.9).repeatForever(autoreverses: false), value: spin)
+                Image(systemName: module.symbol).font(.system(size: 36, weight: .light)).foregroundStyle(module.gradient)
+                    .scaleEffect(spin ? 1.06 : 0.94)
+                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: spin)
             }
             .frame(width: 140, height: 140)
             .onAppear { spin = true }
@@ -136,7 +169,7 @@ struct ScanningView: View {
 
 struct PillButtonStyle: ButtonStyle {
     var prominent = false
-    var tint: Color = .white
+    var tint: Color = .accentColor
     @Environment(\.isEnabled) private var enabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -144,9 +177,12 @@ struct PillButtonStyle: ButtonStyle {
             .font(.system(size: 13, weight: .semibold))
             .padding(.horizontal, 16)
             .padding(.vertical, 7)
-            .foregroundStyle(prominent ? Color.black.opacity(0.85) : .white)
-            .background(prominent ? AnyShapeStyle(tint) : AnyShapeStyle(.white.opacity(0.12)), in: Capsule())
-            .opacity(enabled ? (configuration.isPressed ? 0.7 : 1) : 0.4)
+            .foregroundStyle(prominent ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.primary))
+            .background(prominent ? AnyShapeStyle(tint) : AnyShapeStyle(Color.quietButton), in: Capsule())
+            .shadow(color: prominent && enabled ? tint.opacity(0.4) : .clear, radius: 8, y: 3)
+            .opacity(enabled ? 1 : 0.4)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.spring(duration: 0.2), value: configuration.isPressed)
     }
 }
 
@@ -169,8 +205,8 @@ struct ActionBar<Leading: View>: View {
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 14)
-        .background(.black.opacity(0.25))
-        .overlay(alignment: .top) { Divider().opacity(0.4) }
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) { Color.hairline.frame(height: 1) }
     }
 }
 
@@ -216,7 +252,7 @@ struct ReportBanner: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: report.failures.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(report.failures.isEmpty ? tint : .yellow)
+                    .foregroundStyle(report.failures.isEmpty ? tint : Color.warning)
                 Text(summary).font(.callout.weight(.medium))
                 Spacer()
                 if !report.failures.isEmpty {

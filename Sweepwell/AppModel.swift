@@ -6,6 +6,7 @@ enum Preferences {
     static let removalModeKey = "removalMode"
     static let largeFileThresholdKey = "largeFileThresholdMB"
     static let showMenuBarKey = "showMenuBarMonitor"
+    static let appearanceKey = "appearance"
 
     static var removalMode: RemovalMode {
         RemovalMode(rawValue: UserDefaults.standard.string(forKey: removalModeKey) ?? "") ?? .trash
