@@ -1,0 +1,65 @@
+# Sweepwell
+
+A native Apple silicon Mac cleaner and maintenance app, built with SwiftUI.
+(Working title was "Mac Maid"; that name is already used by other Mac cleaners.)
+
+| Module | What it does |
+| --- | --- |
+| Overview | Live CPU, memory, storage and battery gauges; one-button Smart Scan |
+| System Junk | App caches, logs, Xcode build data, developer tool caches, incomplete downloads, Mail downloads, Trash |
+| Large & Old Files | Files over a threshold in your personal folders, filterable by size and last-opened date |
+| Duplicates | Byte-for-byte identical files (size, then 64 KB hash, then full SHA-256) |
+| Space Lens | Squarified treemap of any folder, with drill-down |
+| Uninstaller | Removes an app together with its `~/Library` support files |
+| Startup & Activity | Launch agents and daemons (flags broken ones), top memory consumers |
+| Maintenance | Flush DNS, free inactive memory, thin snapshots, rebuild Spotlight, reset Quick Look, and more |
+
+Also: a menu bar monitor and a settings window (⌘,).
+
+## Safety model
+
+- Removal goes to the **Trash by default** (Settings can switch to immediate deletion).
+- Scanners only *offer* items. A separate `SafetyGuard` decides what may be *removed*, from the
+  resolved path alone, with a narrow allow-list per purpose. Documents, Desktop, Pictures,
+  Keychains, iCloud Drive, Mail and similar are refused even if a scanner bug offered them,
+  and a symlinked parent folder cannot redirect a removal.
+- Risky finds (iOS backups, Xcode archives, caches of running apps) are listed but never pre-ticked.
+- No network access, no account, no analytics. Administrator tasks use the standard macOS
+  password dialog; Sweepwell never sees the password.
+
+## Build and install
+
+Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+
+```bash
+scripts/build-release.sh          # → dist/Sweepwell.app (arm64, ad-hoc signed)
+ditto dist/Sweepwell.app /Applications/Sweepwell.app
+open -a Sweepwell
+```
+
+Then grant **Full Disk Access** (System Settings → Privacy & Security) so scans can see the
+Trash, Mail downloads and other apps' containers. Without it, scans are incomplete and the
+first one is slow, because macOS evaluates every protected folder it refuses. An ad-hoc signed
+build gets a new identity on every rebuild, so the grant has to be repeated after rebuilding.
+
+## Trying it without touching real files
+
+```bash
+scripts/make-demo-home.sh /tmp/sweepwell-demo      # ~6 GB of fake junk, apps and duplicates
+SWEEPWELL_HOME=/tmp/sweepwell-demo dist/Sweepwell.app/Contents/MacOS/Sweepwell
+```
+
+With `SWEEPWELL_HOME` set the app shows a "Demo folder" badge, only looks inside that folder,
+and keeps trashed items in the folder's own `.Trash`.
+
+## Layout
+
+- `SweepwellKit/` – Swift package with all scanning and removal logic, plus tests (`swift test`).
+  `SWEEPWELL_REAL_SCAN=~/Library swift test --filter RealWorldTests` compares the scanner with `du` (read-only).
+- `Sweepwell/` – the SwiftUI app. `Tools/MakeAppIcon.swift` regenerates the icon.
+
+## Not included
+
+No malware scanner (that needs a maintained signature database to be honest), no privileged
+helper (items owned by root are handed to Finder, which asks for a password), and no
+notarization: share builds only after signing with a Developer ID.

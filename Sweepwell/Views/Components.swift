@@ -1,0 +1,279 @@
+import SwiftUI
+import SweepwellKit
+
+/// Title block + content + optional footer bar, shared by every module.
+struct ModuleScaffold<Content: View, Footer: View>: View {
+    let module: Module
+    @ViewBuilder var content: Content
+    @ViewBuilder var footer: Footer
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: module.symbol)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(module.gradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(module.title).font(.system(size: 22, weight: .bold, design: .rounded))
+                    Text(module.tagline).font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 28)
+            .padding(.top, 22)
+            .padding(.bottom, 16)
+
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            footer
+        }
+    }
+}
+
+extension ModuleScaffold where Footer == EmptyView {
+    init(module: Module, @ViewBuilder content: () -> Content) {
+        self.init(module: module, content: content, footer: { EmptyView() })
+    }
+}
+
+/// The big round call-to-action in the middle of an idle module.
+struct OrbButton: View {
+    let title: String
+    let module: Module
+    var diameter: CGFloat = 132
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: diameter * 0.17, weight: .bold, design: .rounded))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white)
+                .frame(width: diameter, height: diameter)
+                .background(module.gradient, in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1.5))
+                .shadow(color: module.accent.opacity(hovering ? 0.75 : 0.45), radius: hovering ? 30 : 20, y: 8)
+                .scaleEffect(hovering ? 1.04 : 1)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.spring(duration: 0.3), value: hovering)
+    }
+}
+
+struct IdleView: View {
+    let module: Module
+    let headline: String
+    let details: [String]
+    var buttonTitle = "Scan"
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 26) {
+            Spacer()
+            Image(systemName: module.symbol)
+                .font(.system(size: 64, weight: .light))
+                .foregroundStyle(module.gradient)
+                .symbolRenderingMode(.hierarchical)
+            VStack(spacing: 10) {
+                Text(headline).font(.system(size: 24, weight: .bold, design: .rounded))
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(details, id: \.self) { line in
+                        Label(line, systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                }
+            }
+            OrbButton(title: buttonTitle, module: module, action: action)
+            Spacer()
+        }
+        .padding(30)
+    }
+}
+
+/// Live progress. The scan updates plain counters; this view just polls them, so a scan of a
+/// million files never floods the main thread with updates.
+struct ScanningView: View {
+    let module: Module
+    let control: ScanControl
+    var title = "Scanning…"
+    @State private var spin = false
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            ZStack {
+                Circle().stroke(.white.opacity(0.08), lineWidth: 10)
+                Circle().trim(from: 0, to: 0.3)
+                    .stroke(module.gradient, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .rotationEffect(.degrees(spin ? 360 : 0))
+                    .animation(.linear(duration: 1.1).repeatForever(autoreverses: false), value: spin)
+                Image(systemName: module.symbol).font(.system(size: 40, weight: .light)).foregroundStyle(module.gradient)
+            }
+            .frame(width: 140, height: 140)
+            .onAppear { spin = true }
+
+            TimelineView(.periodic(from: .now, by: 0.12)) { _ in
+                VStack(spacing: 6) {
+                    Text(title).font(.system(size: 20, weight: .semibold, design: .rounded))
+                    Text("\(control.filesScanned.formatted()) files · \(Format.bytes(control.bytesScanned))")
+                        .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                    Text(control.currentPath)
+                        .font(.caption).foregroundStyle(.tertiary)
+                        .lineLimit(1).truncationMode(.middle).frame(maxWidth: 520)
+                }
+            }
+            Button("Stop") { control.cancel() }.buttonStyle(PillButtonStyle())
+            Spacer()
+        }
+        .padding(30)
+    }
+}
+
+struct PillButtonStyle: ButtonStyle {
+    var prominent = false
+    var tint: Color = .white
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 7)
+            .foregroundStyle(prominent ? Color.black.opacity(0.85) : .white)
+            .background(prominent ? AnyShapeStyle(tint) : AnyShapeStyle(.white.opacity(0.12)), in: Capsule())
+            .opacity(enabled ? (configuration.isPressed ? 0.7 : 1) : 0.4)
+    }
+}
+
+/// Bottom bar with the running total and the one destructive button of a module.
+struct ActionBar<Leading: View>: View {
+    let module: Module
+    let actionTitle: String
+    let enabled: Bool
+    let action: () -> Void
+    @ViewBuilder var leading: Leading
+
+    var body: some View {
+        HStack(spacing: 16) {
+            leading
+            Spacer()
+            Button(actionTitle, action: action)
+                .buttonStyle(PillButtonStyle(prominent: true, tint: module.accent))
+                .disabled(!enabled)
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 14)
+        .background(.black.opacity(0.25))
+        .overlay(alignment: .top) { Divider().opacity(0.4) }
+    }
+}
+
+/// "Clean 2.8 GB", or just "Clean" while nothing is ticked.
+func actionTitle(_ verb: String, _ size: Int64) -> String {
+    size > 0 ? "\(verb) \(Format.bytes(size))" : verb
+}
+
+struct CheckBox: View {
+    enum State { case off, on, mixed }
+    let state: State
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: state == .off ? "circle" : (state == .on ? "checkmark.circle.fill" : "minus.circle.fill"))
+                .font(.system(size: 17))
+                .foregroundStyle(state == .off ? AnyShapeStyle(.tertiary) : AnyShapeStyle(tint))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct FileIcon: View {
+    let url: URL
+    var size: CGFloat = 28
+
+    var body: some View {
+        Image(nsImage: IconCache.icon(for: url)).resizable().frame(width: size, height: size)
+    }
+}
+
+/// What happened after a removal, including anything macOS refused to let go of.
+struct ReportBanner: View {
+    let report: RemovalReport
+    let mode: RemovalMode
+    let tint: Color
+    let dismiss: () -> Void
+    @State private var showFailures = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: report.failures.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(report.failures.isEmpty ? tint : .yellow)
+                Text(summary).font(.callout.weight(.medium))
+                Spacer()
+                if !report.failures.isEmpty {
+                    Button(showFailures ? "Hide details" : "Show details") { showFailures.toggle() }.buttonStyle(.link)
+                }
+                Button(action: dismiss) { Image(systemName: "xmark") }.buttonStyle(.plain).foregroundStyle(.secondary)
+            }
+            if showFailures {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(report.failures) { failure in
+                            Text("\(failure.url.lastPathComponent): \(failure.message)")
+                                .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }.frame(maxHeight: 90)
+            }
+        }
+        .padding(12)
+        .card(cornerRadius: 10, highlighted: true)
+        .padding(.horizontal, 28)
+        .padding(.bottom, 10)
+    }
+
+    private var summary: String {
+        var text = mode == .trash
+            ? "\(Format.bytes(report.bytesFreed)) moved to the Trash. Empty it to get the space back."
+            : "\(Format.bytes(report.bytesFreed)) freed."
+        if report.removed.isEmpty { text = "Nothing was removed." }
+        if !report.failures.isEmpty { text += " \(report.failures.count) item(s) could not be removed." }
+        return text
+    }
+}
+
+struct EmptyResultView: View {
+    let module: Module
+    let title: String
+    let message: String
+    let rescan: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "checkmark.circle").font(.system(size: 56, weight: .light)).foregroundStyle(module.gradient)
+            Text(title).font(.system(size: 22, weight: .bold, design: .rounded))
+            Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
+            Button("Scan Again", action: rescan).buttonStyle(PillButtonStyle()).padding(.top, 6)
+            Spacer()
+        }
+    }
+}
+
+extension Date {
+    var relativeDescription: String {
+        if self == .distantPast { return "—" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: self, relativeTo: .now)
+    }
+}
