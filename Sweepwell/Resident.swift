@@ -139,6 +139,7 @@ final class StatusPanelController: NSObject {
     private let panel: KeyPanel
     private let hosting: NSHostingView<AnyView>
     private var outsideClickMonitor: Any?
+    private var lastClosed = Date.distantPast
 
     init(model: AppModel) {
         panel = KeyPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
@@ -171,7 +172,16 @@ final class StatusPanelController: NSObject {
                                                name: NSWindow.didResignKeyNotification, object: panel)
     }
 
-    @objc private func toggle() { panel.isVisible ? close() : show() }
+    /// A click on the icon while the panel is open reaches us twice: first the panel loses
+    /// focus and closes itself, then the button's action fires. Without this check the second
+    /// half would see a closed panel and open it again, so the icon could never dismiss it.
+    @objc private func toggle() {
+        if panel.isVisible {
+            close()
+        } else if Date().timeIntervalSince(lastClosed) > 0.3 {
+            show()
+        }
+    }
 
     func show() {
         guard let buttonWindow = statusItem.button?.window else { return }
@@ -188,6 +198,7 @@ final class StatusPanelController: NSObject {
     }
 
     func close() {
+        if panel.isVisible { lastClosed = Date() }
         panel.orderOut(nil)
         if let monitor = outsideClickMonitor { NSEvent.removeMonitor(monitor) }
         outsideClickMonitor = nil
