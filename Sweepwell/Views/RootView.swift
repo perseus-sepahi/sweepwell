@@ -50,7 +50,8 @@ struct Sidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 9) {
-                Image(systemName: "sparkles").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                Image("BroomGlyph").resizable().renderingMode(.template).foregroundStyle(.white)
+                    .frame(width: 17, height: 17)
                     .frame(width: 26, height: 26)
                     .background(Module.overview.gradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .shadow(color: Module.overview.accent.opacity(0.5), radius: 6, y: 2)

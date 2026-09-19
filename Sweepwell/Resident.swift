@@ -157,7 +157,12 @@ final class StatusPanelController: NSObject {
         hosting.rootView = AnyView(MenuPanelView(dismiss: { [weak self] in self?.close() }).environment(model))
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Sweepwell")
+            // The broom from the app icon, as a template so macOS tints it for the menu bar.
+            let glyph = NSImage(named: "BroomGlyph") ?? NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
+            glyph?.isTemplate = true
+            glyph?.size = NSSize(width: 18, height: 18)
+            glyph?.accessibilityDescription = "Sweepwell"
+            button.image = glyph
             button.imagePosition = .imageOnly
             button.target = self
             button.action = #selector(toggle)
