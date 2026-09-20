@@ -36,6 +36,10 @@ final class AppModel {
     /// Recent network samples (bytes/s), oldest first, for the menu bar panel's sparkline.
     var networkHistory: [(down: Double, up: Double)] = []
     var panelMessage: String?
+    /// Which tile of the menu bar panel is opened up into its per-app breakdown, if any.
+    var panelDetail: PanelDetail?
+    var appUsage: [AppUsage] = []
+    private let usageSampler = AppUsageSampler()
 
     let junk: JunkModel
     let largeFiles: LargeFilesModel
@@ -181,6 +185,13 @@ final class AppModel {
         return .init(symbol: "checkmark.seal.fill", title: "Everything looks tidy",
                      detail: "No junk worth cleaning, no broken startup items, and plenty of room.",
                      actionTitle: nil, module: .overview)
+    }
+
+    /// Refreshes the per-app figures. Only the breakdown view calls this, and only while it
+    /// is on screen, so nothing is measured for a list nobody is reading.
+    func sampleAppUsage(includeNetwork: Bool) async {
+        let sampler = usageSampler
+        appUsage = await Task.detached { sampler.sample(includeNetwork: includeNetwork) }.value
     }
 
     func eject(_ volume: ExternalVolume) {

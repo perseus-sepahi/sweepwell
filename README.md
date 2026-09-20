@@ -21,7 +21,9 @@ follows the macOS appearance; the switch at the bottom of the sidebar forces Day
 
 Clicking the ✦ menu bar icon opens a summary: a health score, storage, memory pressure, battery
 (with capacity and cycle count), processor load and temperature, network throughput, connected
-drives with eject, and one suggestion based on what Sweepwell has found locally. There is no
+drives with eject, and one suggestion based on what Sweepwell has found locally. Click a tile
+(Storage, Memory, Battery, Processor, Network) for the apps behind the number, helpers rolled
+into their app, with Quit on hover. There is no
 speed test or update check, because Sweepwell makes no network connections.
 
 The **Glass** slider (sidebar and Settings) runs from solid cards to Liquid Glass. It needs

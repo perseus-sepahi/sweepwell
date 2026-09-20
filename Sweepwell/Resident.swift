@@ -64,7 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusPanel = StatusPanelController(model: .shared)
         let hooks = ProcessInfo.processInfo.environment
         if hooks["SWEEPWELL_OPEN_PANEL"] == "1" {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { self.statusPanel?.show() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+                self.statusPanel?.show()
+                AppModel.shared.panelDetail = hooks["SWEEPWELL_PANEL_DETAIL"].flatMap(PanelDetail.init(rawValue:))
+            }
         }
         if hooks["SWEEPWELL_TEST_REOPEN"] == "1" {
             // UI check: the window was closed at launch; prove it can come back.
@@ -155,7 +158,8 @@ final class StatusPanelController: NSObject {
         panel.collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.contentView = hosting
-        hosting.rootView = AnyView(MenuPanelView(dismiss: { [weak self] in self?.close() }).environment(model))
+        hosting.rootView = AnyView(MenuPanelView(dismiss: { [weak self] in self?.close() },
+                                                 sizeChanged: { [weak self] in self?.fit(to: $0) }).environment(model))
 
         if let button = statusItem.button {
             // The broom from the app icon, as a template so macOS tints it for the menu bar.
@@ -198,8 +202,17 @@ final class StatusPanelController: NSObject {
         }
     }
 
+    /// The panel grows and shrinks with its content (overview vs. a breakdown). It hangs from
+    /// the menu bar, so the top edge stays put and the bottom edge moves.
+    private func fit(to size: CGSize) {
+        guard panel.isVisible, size.height > 50, abs(panel.frame.height - size.height) > 0.5 else { return }
+        let frame = panel.frame
+        panel.setFrame(NSRect(x: frame.minX, y: frame.maxY - size.height, width: size.width, height: size.height), display: true)
+    }
+
     func close() {
         if panel.isVisible { lastClosed = Date() }
+        AppModel.shared.panelDetail = nil   // next time, open on the overview again
         panel.orderOut(nil)
         if let monitor = outsideClickMonitor { NSEvent.removeMonitor(monitor) }
         outsideClickMonitor = nil

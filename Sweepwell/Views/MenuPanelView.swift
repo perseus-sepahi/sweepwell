@@ -9,12 +9,29 @@ struct MenuPanelView: View {
     @AppStorage(Preferences.glassKey) private var glass = Glassiness.default
     /// Closes the panel; every action that leaves for a window calls it first.
     var dismiss: () -> Void = {}
+    /// The content changed size; the hosting panel resizes itself to match.
+    var sizeChanged: (CGSize) -> Void = { _ in }
 
     private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     var body: some View {
         let s = app.snapshot
         VStack(alignment: .leading, spacing: 14) {
+            if let detail = app.panelDetail {
+                PanelDetailView(detail: detail) { module in show(module, scan: false) }
+            } else {
+                overview(s)
+            }
+            footer
+        }
+        .padding(16)
+        .frame(width: 400)
+        .background { PanelBackground(glass: glass).shadow(color: .black.opacity(0.28), radius: 14, y: 8) }
+        .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 30)   // room for that shadow
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { sizeChanged($0) }
+    }
+
+    @ViewBuilder private func overview(_ s: SystemSnapshot) -> some View {
             header
             LazyVGrid(columns: columns, spacing: 10) {
                 storageTile(s)
@@ -28,12 +45,6 @@ struct MenuPanelView: View {
                 Text(message).font(.caption).foregroundStyle(Color.warning).fixedSize(horizontal: false, vertical: true)
             }
             recommendationCard
-            footer
-        }
-        .padding(16)
-        .frame(width: 400)
-        .background { PanelBackground(glass: glass).shadow(color: .black.opacity(0.28), radius: 14, y: 8) }
-        .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 30)   // room for that shadow
     }
 
     // MARK: Header
@@ -74,7 +85,7 @@ struct MenuPanelView: View {
     // MARK: Tiles
 
     private func storageTile(_ s: SystemSnapshot) -> some View {
-        PanelTile(symbol: "internaldrive.fill", title: "Macintosh HD", module: .spaceLens) {
+        PanelTile(symbol: "internaldrive.fill", title: "Macintosh HD", module: .spaceLens, open: { app.panelDetail = .storage }) {
             Text("\(Format.bytes(s.diskAvailable)) available")
                 .foregroundStyle(s.diskFraction > 0.85 ? Color.warning : .secondary)
             MeterBar(value: s.diskFraction, colors: Module.spaceLens.colors, alarm: s.diskFraction > 0.9)
@@ -84,7 +95,7 @@ struct MenuPanelView: View {
     }
 
     private func memoryTile(_ s: SystemSnapshot) -> some View {
-        PanelTile(symbol: "memorychip.fill", title: "Memory", module: .largeFiles) {
+        PanelTile(symbol: "memorychip.fill", title: "Memory", module: .largeFiles, open: { app.panelDetail = .memory }) {
             Text("Pressure \(percent(s.memoryPressure)) · \(Format.bytes(s.memoryUsed)) used").foregroundStyle(.secondary)
             MeterBar(value: s.memoryPressure, colors: Module.largeFiles.colors, alarm: s.memoryPressure > 0.8)
         } action: {
@@ -95,7 +106,7 @@ struct MenuPanelView: View {
     @ViewBuilder private func batteryOrUptimeTile(_ s: SystemSnapshot) -> some View {
         if let level = s.batteryLevel {
             PanelTile(symbol: s.batteryCharging ? "battery.100percent.bolt" : "battery.75percent", title: "Battery",
-                      trailing: percent(level), module: .maintenance) {
+                      trailing: percent(level), module: .maintenance, open: { app.panelDetail = .battery }) {
                 Text(s.batteryCharging ? "Charging" : "On battery").foregroundStyle(.secondary)
                 if let health = s.batteryHealth, let cycles = s.batteryCycles {
                     Text("Health \(percent(health)) · \(cycles) cycles").foregroundStyle(.tertiary)
@@ -112,14 +123,15 @@ struct MenuPanelView: View {
         let hot = (s.cpuTemperature ?? 0) > 85
         return PanelTile(symbol: "cpu.fill", title: "Processor",
                          trailing: s.cpuTemperature.map { "\(Int($0.rounded())) °C" },
-                         trailingColor: hot ? .danger : ((s.cpuTemperature ?? 0) > 65 ? .warning : .secondary), module: .startup) {
+                         trailingColor: hot ? .danger : ((s.cpuTemperature ?? 0) > 65 ? .warning : .secondary), module: .startup,
+                         open: { app.panelDetail = .processor }) {
             Text("Load \(percent(s.cpuUsage))").foregroundStyle(.secondary)
             MeterBar(value: s.cpuUsage, colors: Module.startup.colors, alarm: false)
         } action: { EmptyView() }
     }
 
     private func networkTile(_ s: SystemSnapshot) -> some View {
-        PanelTile(symbol: "network", title: "Network", module: .overview) {
+        PanelTile(symbol: "network", title: "Network", module: .overview, open: { app.panelDetail = .network }) {
             HStack(spacing: 10) {
                 Label(rate(s.networkOut), systemImage: "arrow.up").labelStyle(.titleAndIcon)
                 Label(rate(s.networkIn), systemImage: "arrow.down").labelStyle(.titleAndIcon)
@@ -182,7 +194,7 @@ struct MenuPanelView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Button("Open Sweepwell") { show(app.selection, scan: false) }.buttonStyle(PillButtonStyle())
+            Button("Open Sweepwell") { show(app.selection, scan: false) }.buttonStyle(PillButtonStyle()).focusable(false)
             Spacer()
             iconButton("gearshape.fill", help: "Settings") {
                 dismiss()
@@ -224,8 +236,11 @@ private struct PanelTile<Content: View, Action: View>: View {
     var trailing: String?
     var trailingColor: Color = .secondary
     let module: Module
+    /// Opens the per-app breakdown. Tiles without one (connected drives) are not clickable.
+    var open: (() -> Void)?
     @ViewBuilder var content: Content
     @ViewBuilder var action: Action
+    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -234,6 +249,10 @@ private struct PanelTile<Content: View, Action: View>: View {
                 Text(title).font(.callout.weight(.semibold)).lineLimit(1)
                 Spacer(minLength: 0)
                 if let trailing { Text(trailing).font(.callout.monospacedDigit().weight(.medium)).foregroundStyle(trailingColor) }
+                if open != nil {
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(hovering ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
+                }
             }
             content.font(.caption)
             Spacer(minLength: 0)
@@ -241,15 +260,23 @@ private struct PanelTile<Content: View, Action: View>: View {
         }
         .padding(11)
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .background(PanelTileBackground())
+        .background(PanelTileBackground(highlighted: hovering && open != nil))
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .onHover { hovering = $0 }
+        // A tap gesture rather than a wrapping Button, so the links inside a tile
+        // ("Free Up", eject) keep their own clicks.
+        .onTapGesture { open?() }
+        .help(open == nil ? "" : "Show which apps are using it")
     }
 }
 
 /// Tiles sit *on* the panel's glass. Glass stacked on glass turns to mud, so they are plain
 /// translucent fills with a hairline, which is also what Apple's own panels do.
 private struct PanelTileBackground: View {
+    var highlighted = false
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.panelTile)
+        RoundedRectangle(cornerRadius: 14, style: .continuous).fill(highlighted ? Color.panelTileHover : Color.panelTile)
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.hairline))
     }
 }

@@ -140,4 +140,36 @@ final class ModuleTests: XCTestCase {
         XCTAssertEqual(bad.grade, .poor)
         XCTAssertEqual(bad.concerns.first, "Startup disk is almost full")
     }
+
+    func testAppUsageGroupsProcessesAndProducesSaneRates() throws {
+        XCTAssertEqual(AppUsageSampler.bundlePath(in: "/Applications/Chrome.app/Contents/Frameworks/Helper.app/Contents/MacOS/Helper"),
+                       "/Applications/Chrome.app", "helpers roll up into the outermost bundle")
+        XCTAssertNil(AppUsageSampler.bundlePath(in: "/usr/sbin/cfprefsd"))
+
+        let sampler = AppUsageSampler()
+        let mine = ProcessInfo.processInfo.processIdentifier
+        XCTAssertEqual(sampler.sample().first { $0.pids.contains(mine) }?.cpu, 0, "no rate without a previous sample")
+
+        // Burn a core for the interval so there is a known consumer to find: this test process.
+        let deadline = Date().addingTimeInterval(1.0)
+        var spin = 0.0
+        while Date() < deadline { spin += sqrt(Double.random(in: 1...2)) }
+        XCTAssertGreaterThan(spin, 0)
+
+        let apps = sampler.sample(includeNetwork: true)
+        let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
+        let totalCPU = apps.reduce(0) { $0 + $1.cpu }
+        XCTAssertLessThan(totalCPU, cores * 100 * 1.2, "sum of per-app CPU cannot exceed the machine")
+
+        let me = try XCTUnwrap(apps.first { $0.pids.contains(mine) })
+        print("This test process: \(Int(me.cpu))% CPU, \(Format.bytes(me.memory)), \(String(format: "%.2f", me.power)) W")
+        XCTAssertTrue((0.3...25).contains(me.power), "a busy core draws on the order of watts, got \(me.power)")
+        XCTAssertTrue((60...140).contains(me.cpu), "one busy thread is about 100% of a core, got \(me.cpu)")
+
+        let byMemory = apps.sorted { $0.memory > $1.memory }.prefix(4)
+        print("Top memory:", byMemory.map { "\($0.name) \(Format.bytes($0.memory)) (\($0.processCount) procs)" })
+        XCTAssertGreaterThan(byMemory.first?.memory ?? 0, 100 << 20)
+        print("Top CPU:", apps.sorted { $0.cpu > $1.cpu }.prefix(3).map { "\($0.name) \(Int($0.cpu))%" })
+        print("Top power:", apps.sorted { $0.power > $1.power }.prefix(3).map { "\($0.name) \(String(format: "%.2f", $0.power)) W" })
+    }
 }

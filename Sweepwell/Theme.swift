@@ -79,6 +79,7 @@ extension Color {
     // Menu bar panel: a tinted solid that the glass dial fades away, and the tiles on top.
     static let panelSolid = Color(day: 0xF4F6FC, night: 0x15172B)
     static let panelTile = Color(day: 0xFFFFFF, night: 0xFFFFFF, dayAlpha: 0.55, nightAlpha: 0.07)
+    static let panelTileHover = Color(day: 0xFFFFFF, night: 0xFFFFFF, dayAlpha: 0.85, nightAlpha: 0.14)
 
     // Controls
     static let track = Color(day: 0x1A1F44, night: 0xFFFFFF, dayAlpha: 0.09, nightAlpha: 0.09)
