@@ -40,26 +40,26 @@ extension ModuleScaffold where Footer == EmptyView {
     }
 }
 
-/// The big round call-to-action in the middle of an idle module: a glossy sphere with
-/// halo rings that breathe, so the screen never feels static while it waits for a click.
+/// The big round call-to-action in the middle of an idle module: a glossy sphere whose halo
+/// rings ripple out while the pointer is over it. At rest nothing animates, so an idle
+/// window costs no CPU.
 struct OrbButton: View {
     let title: String
     let module: Module
     var diameter: CGFloat = 132
     let action: () -> Void
     @State private var hovering = false
-    @State private var breathing = false
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 ForEach(0..<2, id: \.self) { ring in
                     Circle()
-                        .stroke(module.accent.opacity(breathing ? 0 : 0.35), lineWidth: 1.5)
+                        .stroke(module.accent.opacity(hovering ? 0 : 0.3), lineWidth: 1.5)
                         .frame(width: diameter, height: diameter)
-                        .scaleEffect(breathing ? 1.55 + CGFloat(ring) * 0.25 : 1)
-                        .animation(.easeOut(duration: 2.8).repeatForever(autoreverses: false).delay(Double(ring) * 1.2),
-                                   value: breathing)
+                        .scaleEffect(hovering ? 1.45 + CGFloat(ring) * 0.22 : 1.12 + CGFloat(ring) * 0.1)
+                        .animation(.easeOut(duration: hovering ? 1.1 : 0.4).delay(hovering ? Double(ring) * 0.18 : 0),
+                                   value: hovering)
                 }
                 Circle().fill(module.gradient)
                     .overlay {
@@ -83,7 +83,6 @@ struct OrbButton: View {
         .buttonStyle(.plain)
         .focusable(false)
         .onHover { hovering = $0 }
-        .onAppear { breathing = true }
         .animation(.spring(duration: 0.35), value: hovering)
     }
 }

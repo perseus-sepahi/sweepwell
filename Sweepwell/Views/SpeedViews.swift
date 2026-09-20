@@ -44,7 +44,7 @@ struct StartupView: View {
             // Live while the view is on screen; SwiftUI cancels this when it goes away.
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
-                await model.refreshProcesses()
+                if AppModel.isAnythingVisible { await model.refreshProcesses() }
             }
         }
         .confirmationDialog("Remove \(confirming?.label ?? "")?", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),

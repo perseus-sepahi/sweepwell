@@ -249,34 +249,27 @@ struct VibrantBackground: NSViewRepresentable {
     func updateNSView(_ view: NSVisualEffectView, context: Context) { view.material = material }
 }
 
-/// Slow, blurred colour fields in the active module's hues. Purely decorative, so it sits
-/// behind everything and ignores hit testing.
+/// Soft colour fields in the active module's hues. Deliberately static and drawn as plain
+/// radial gradients: an earlier version drifted forever through 110-pt blurs, which pinned
+/// the window to the display link and cost ~40% CPU for decoration nobody was watching.
 struct AuroraBackground: View {
     let module: Module
     @AppStorage(Preferences.glassKey) private var glass = Glassiness.default
-    @State private var drift = false
 
     var body: some View {
         GeometryReader { proxy in
-            let w = proxy.size.width, h = proxy.size.height
+            let reach = max(proxy.size.width, proxy.size.height)
             ZStack {
                 // The more glass, the more of the desktop behind the window shows through.
                 VibrantBackground(material: .underWindowBackground)
                 LinearGradient(colors: [.canvasTop, .canvasBottom], startPoint: .top, endPoint: .bottom)
                     .opacity(1 - glass * 0.7)
-                Circle().fill(module.colors[0].opacity(0.30))
-                    .frame(width: w * 0.7).blur(radius: 110)
-                    .offset(x: w * (drift ? 0.34 : 0.26), y: -h * (drift ? 0.42 : 0.34))
-                Circle().fill(module.colors[1].opacity(0.24))
-                    .frame(width: w * 0.55).blur(radius: 120)
-                    .offset(x: -w * (drift ? 0.30 : 0.38), y: h * (drift ? 0.40 : 0.48))
+                RadialGradient(colors: [module.colors[0].opacity(0.30), .clear], center: .init(x: 0.85, y: 0.05),
+                               startRadius: 0, endRadius: reach * 0.6)
+                RadialGradient(colors: [module.colors[1].opacity(0.22), .clear], center: .init(x: 0.1, y: 1.0),
+                               startRadius: 0, endRadius: reach * 0.55)
             }
-            .frame(width: w, height: h)
-            .clipped()
         }
         .allowsHitTesting(false)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) { drift = true }
-        }
     }
 }

@@ -39,6 +39,7 @@ public final class SystemSampler: @unchecked Sendable {
     private var previousTicks: (busy: UInt64, total: UInt64)?
     private var previousNetwork: (counters: NetworkCounters, time: Date)?
     private var cachedBattery: (health: BatteryHealth?, time: Date)?
+    private var cachedDisk: (total: Int64, available: Int64, time: Date)?
     private let thermal = ThermalSensors()
     private let lock = NSLock()
 
@@ -125,11 +126,24 @@ public final class SystemSampler: @unchecked Sendable {
         snapshot.memoryCompressed = compressed * page
     }
 
+    /// "Available for important usage" makes the system tally purgeable space, which is by far
+    /// the costliest reading here, and free space does not move second to second.
     private func readDisk(into snapshot: inout SystemSnapshot) {
+        let cached: (total: Int64, available: Int64)? = lock.withLock {
+            guard let disk = cachedDisk, Date().timeIntervalSince(disk.time) < 20 else { return nil }
+            return (disk.total, disk.available)
+        }
+        if let cached {
+            snapshot.diskTotal = cached.total
+            snapshot.diskAvailable = cached.available
+            return
+        }
         let keys: Set<URLResourceKey> = [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]
         guard let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: keys) else { return }
         snapshot.diskTotal = Int64(values.volumeTotalCapacity ?? 0)
         snapshot.diskAvailable = values.volumeAvailableCapacityForImportantUsage ?? 0
+        let (total, available) = (snapshot.diskTotal, snapshot.diskAvailable)
+        lock.withLock { cachedDisk = (total, available, Date()) }
     }
 
     private func readBattery(into snapshot: inout SystemSnapshot) {

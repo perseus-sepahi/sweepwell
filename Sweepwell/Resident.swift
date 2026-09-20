@@ -192,6 +192,7 @@ final class StatusPanelController: NSObject {
         let x = min(max(anchor.midX - size.width / 2, screen.minX + 8), screen.maxX - size.width - 8)
         panel.setFrame(NSRect(x: x, y: anchor.minY - size.height - 6, width: size.width, height: size.height), display: true)
         panel.makeKeyAndOrderFront(nil)
+        Task { await AppModel.shared.sampleNow() }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.close() }
         }

@@ -55,7 +55,6 @@ struct MenuPanelView: View {
                     .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .shadow(color: color.opacity(0.6), radius: 5)
-                    .animation(.easeOut(duration: 0.6), value: health.score)
                 Text("\(health.score)").font(.system(size: 15, weight: .bold, design: .rounded)).monospacedDigit()
             }
             .frame(width: 46, height: 46)
@@ -270,6 +269,8 @@ private struct TileLink: View {
     }
 }
 
+/// Values change every sample, so nothing here eases between them: an animation per sample
+/// means dozens of frames of re-rasterised glass and shadow for a bar moving two pixels.
 private struct MeterBar: View {
     let value: Double
     let colors: [Color]
@@ -282,7 +283,6 @@ private struct MeterBar: View {
                     Capsule()
                         .fill(alarm ? AnyShapeStyle(Color.danger) : AnyShapeStyle(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)))
                         .frame(width: max(4, proxy.size.width * min(1, max(0, value))))
-                        .animation(.easeOut(duration: 0.5), value: value)
                 }
         }
         .frame(height: 4)

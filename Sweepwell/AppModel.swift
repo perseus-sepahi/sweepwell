@@ -68,14 +68,30 @@ final class AppModel {
         monitor = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let sampler = self.sampler
-                let (snapshot, volumes) = await Task.detached { (sampler.sample(), ExternalVolume.mounted()) }.value
-                self.snapshot = snapshot
-                self.volumes = volumes
-                self.networkHistory = Array((self.networkHistory + [(snapshot.networkIn, snapshot.networkOut)]).suffix(40))
+                // A resident app with nothing on screen has nobody to sample for. Every sample
+                // also invalidates views, so idling here is what keeps background CPU at zero.
+                if Self.isAnythingVisible { await self.sampleNow() }
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+    }
+
+    /// True while the main window, Settings or the menu bar panel is actually showing.
+    static var isAnythingVisible: Bool {
+        NSApp?.windows.contains { window in
+            window.isVisible && window.occlusionState.contains(.visible)
+                && (window.canBecomeMain || window is NSPanel) && window.frame.height > 100
+        } ?? false
+    }
+
+    /// One sample, off the main thread. Also called when the panel opens, so it never shows
+    /// numbers from before the app went quiet.
+    func sampleNow() async {
+        let sampler = sampler
+        let (snapshot, volumes) = await Task.detached { (sampler.sample(), ExternalVolume.mounted()) }.value
+        self.snapshot = snapshot
+        self.volumes = volumes
+        networkHistory = Array((networkHistory + [(snapshot.networkIn, snapshot.networkOut)]).suffix(40))
     }
 
     private func autoCleanWhenReady() {

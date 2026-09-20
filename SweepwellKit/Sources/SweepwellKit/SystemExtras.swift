@@ -94,27 +94,43 @@ public final class ThermalSensors: @unchecked Sendable {
         self.getFloat = getFloat
     }
 
+    /// Sensors identified as CPU-die sensors, with the array that keeps them alive. Asking
+    /// every sensor for its name is most of the cost of a reading and the set never changes
+    /// while the Mac is up, so it is resolved once and refreshed only occasionally.
+    private var dieSensors: (services: CFArray, indexes: [Int], resolved: Date)?
+
+    private func resolveDieSensors() -> (services: CFArray, indexes: [Int])? {
+        if let cached = dieSensors, Date().timeIntervalSince(cached.resolved) < 600 { return (cached.services, cached.indexes) }
+        guard let services = copyServices(client)?.takeRetainedValue() else { return nil }
+        var die: [Int] = []
+        var all: [Int] = []
+        for index in 0..<CFArrayGetCount(services) {
+            guard let service = CFArrayGetValueAtIndex(services, index) else { continue }
+            all.append(index)
+            let name = (copyProperty(service, "Product" as CFString)?.takeRetainedValue() as? String) ?? ""
+            // "PMU tdie*" on M1/M2, "pACC"/"eACC" cluster sensors on later chips.
+            if name.contains("tdie") || name.contains("ACC") { die.append(index) }
+        }
+        let indexes = die.isEmpty ? all : die
+        dieSensors = (services, indexes, Date())
+        return (services, indexes)
+    }
+
     /// The hottest CPU die sensor, in °C: the figure temperature monitors conventionally show,
     /// since one busy core throttles the chip long before the average moves.
     public func cpuTemperature() -> Double? {
         lock.lock()
         defer { lock.unlock() }
-        guard let services = copyServices(client)?.takeRetainedValue() else { return nil }
-        var die: [Double] = []
-        var any: [Double] = []
-        for index in 0..<CFArrayGetCount(services) {
+        guard let (services, indexes) = resolveDieSensors() else { return nil }
+        var hottest: Double?
+        for index in indexes {
             guard let service = CFArrayGetValueAtIndex(services, index),
                   let event = copyEvent(service, Self.temperatureEvent, 0, 0) else { continue }
             let value = getFloat(event, Self.temperatureField)
             Unmanaged<AnyObject>.fromOpaque(event).release()
-            guard value > 0, value < 130 else { continue }
-            any.append(value)
-            let name = (copyProperty(service, "Product" as CFString)?.takeRetainedValue() as? String) ?? ""
-            // "PMU tdie*" on M1/M2, "pACC"/"eACC" cluster sensors on later chips.
-            if name.contains("tdie") || name.contains("ACC") { die.append(value) }
+            if value > 0, value < 130 { hottest = max(hottest ?? 0, value) }
         }
-        let values = die.isEmpty ? any : die
-        return values.max()
+        return hottest
     }
 }
 

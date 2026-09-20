@@ -96,17 +96,16 @@ private struct GaugeTile: View {
                 Circle().stroke(Color.track, lineWidth: 8)
                 if let value {
                     Circle().trim(from: 0, to: max(0.002, min(1, value)))
-                        .stroke(AngularGradient(colors: colors + [colors[0]], center: .center),
+                        // Linear, not angular: CoreGraphics shades conic gradients on the CPU with an
+                        // atan2 per pixel, and this ring is redrawn on every sample, even while
+                        // the window is closed. On a thin ring the two look almost the same.
+                        .stroke(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing),
                                 style: StrokeStyle(lineWidth: 8, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                        .shadow(color: colors[0].opacity(0.55), radius: 6)
-                        .animation(.easeOut(duration: 0.8), value: value)
                 }
                 VStack(spacing: 1) {
                     Text(centerText ?? "\(Int(((value ?? 0) * 100).rounded()))%")
                         .font(.system(size: centerText == nil ? 21 : 15, weight: .bold, design: .rounded)).monospacedDigit()
-                        .contentTransition(.numericText())
-                        .animation(.easeOut(duration: 0.4), value: value)
                     Image(systemName: symbol).font(.caption).foregroundStyle(.secondary)
                 }
             }
