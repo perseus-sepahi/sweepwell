@@ -19,12 +19,25 @@ follows the macOS appearance; the switch at the bottom of the sidebar forces Day
 
 ## Menu bar panel and glass
 
-Clicking the ✦ menu bar icon opens a summary: a health score, storage, memory pressure, battery
-(with capacity and cycle count), processor load and temperature, network throughput, connected
-drives with eject, and one suggestion based on what Sweepwell has found locally. Click a tile
-(Storage, Memory, Battery, Processor, Network) for the apps behind the number, helpers rolled
-into their app, with Quit on hover. There is no
-speed test or update check, because Sweepwell makes no network connections.
+Clicking the broom in the menu bar opens a status panel:
+
+- **A plain status line** ("All clear", "Worth a glance", "Needs a look") with the Mac model,
+  uptime and how many watts the whole Mac is drawing.
+- **Heads-up rows** for what actually matters: an app stuck at high CPU for minutes (found by a
+  once-a-minute background check that costs about 0.1% CPU), memory pressure or heavy swap,
+  a nearly full disk (with how much of it is purgeable), overheating, broken startup items and
+  battery wear. Each has one action: Quit, Details or Scan.
+- **Live vitals**: processor, memory, disk, power and network, each with a graph and its top
+  consumer. Clicking a row opens it in place: the facts behind the number (load averages,
+  swap, purgeable space, adapter wattage, VPN state, traffic since startup, and so on) and the
+  apps using it, with Quit on hover.
+- **Chores**: Keep Awake for 30 minutes, 1 hour, 3 hours or until turned off (a real power
+  assertion that macOS ends on time); Empty Trash, with an inline confirmation; Eject All
+  mounted drives and disk images; and Smart Scan.
+- **A running total** of what Sweepwell has swept.
+
+The broom gets an orange dot when something urgent is found: a stuck app, memory under real
+pressure, or under 5 GB free. Nothing here needs a network connection.
 
 The **Glass** slider (sidebar and Settings) runs from solid cards to Liquid Glass. It needs
 macOS 26 or later for real glass; older systems get a material-based approximation. The panel

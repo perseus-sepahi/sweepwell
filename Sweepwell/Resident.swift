@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import ServiceManagement
+import SweepwellKit
 
 /// "Open at login", backed by the system's own login item list (System Settings → General →
 /// Login Items), so the user can always see and revoke it there as well.
@@ -66,8 +67,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if hooks["SWEEPWELL_OPEN_PANEL"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
                 self.statusPanel?.show()
-                AppModel.shared.panelDetail = hooks["SWEEPWELL_PANEL_DETAIL"].flatMap(PanelDetail.init(rawValue:))
+                AppModel.shared.expandedVital = hooks["SWEEPWELL_PANEL_EXPAND"].flatMap(Vital.init(rawValue:))
             }
+        }
+        if hooks["SWEEPWELL_FAKE_RUNAWAY"] == "1" {
+            // UI check: what a stuck app looks like, without having to wait two minutes for one.
+            AppModel.shared.runaways = [RunawayDetector.Runaway(id: "demo", name: "siriactionsd", bundleURL: nil, pids: [],
+                                                                cpu: 97, minutes: 4)]
+            AppModel.shared.onAttentionChange?(true)
         }
         if hooks["SWEEPWELL_TEST_REOPEN"] == "1" {
             // UI check: the window was closed at launch; prove it can come back.
@@ -144,6 +151,35 @@ final class StatusPanelController: NSObject {
     private var outsideClickMonitor: Any?
     private var lastClosed = Date.distantPast
 
+    /// The broom as a template image, or, when something needs a look, the broom in the menu
+    /// bar's own text colour with a small orange dot. Drawn at render time so it follows light
+    /// and dark menu bars; same size either way, so the item never grows into the notch.
+    static func statusImage(attention: Bool) -> NSImage? {
+        guard let glyph = NSImage(named: "BroomGlyph") ?? NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil) else { return nil }
+        let size = NSSize(width: 18, height: 18)
+        glyph.size = size
+        guard attention else {
+            glyph.isTemplate = true
+            glyph.accessibilityDescription = "Sweepwell"
+            return glyph
+        }
+        let image = NSImage(size: size, flipped: false) { rect in
+            let tinted = NSImage(size: size, flipped: false) { inner in
+                glyph.draw(in: inner)
+                NSColor.labelColor.set()
+                inner.fill(using: .sourceAtop)
+                return true
+            }
+            tinted.draw(in: rect)
+            let dot = NSRect(x: rect.maxX - 7, y: rect.maxY - 7, width: 6.5, height: 6.5)
+            NSColor.systemOrange.setFill()
+            NSBezierPath(ovalIn: dot).fill()
+            return true
+        }
+        image.accessibilityDescription = "Sweepwell, something needs a look"
+        return image
+    }
+
     init(model: AppModel) {
         panel = KeyPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         hosting = NSHostingView(rootView: AnyView(EmptyView()))
@@ -161,13 +197,12 @@ final class StatusPanelController: NSObject {
         hosting.rootView = AnyView(MenuPanelView(dismiss: { [weak self] in self?.close() },
                                                  sizeChanged: { [weak self] in self?.fit(to: $0) }).environment(model))
 
+        model.onAttentionChange = { [weak self] attention in
+            self?.statusItem.button?.image = Self.statusImage(attention: attention)
+        }
         if let button = statusItem.button {
             // The broom from the app icon, as a template so macOS tints it for the menu bar.
-            let glyph = NSImage(named: "BroomGlyph") ?? NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
-            glyph?.isTemplate = true
-            glyph?.size = NSSize(width: 18, height: 18)
-            glyph?.accessibilityDescription = "Sweepwell"
-            button.image = glyph
+            button.image = Self.statusImage(attention: false)
             button.imagePosition = .imageOnly
             button.target = self
             button.action = #selector(toggle)
@@ -196,6 +231,8 @@ final class StatusPanelController: NSObject {
         let x = min(max(anchor.midX - size.width / 2, screen.minX + 8), screen.maxX - size.width - 8)
         panel.setFrame(NSRect(x: x, y: anchor.minY - size.height - 6, width: size.width, height: size.height), display: true)
         panel.makeKeyAndOrderFront(nil)
+        AppModel.shared.panelVisible = true
+        AppModel.shared.refreshTrash()
         Task { await AppModel.shared.sampleNow() }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.close() }
@@ -212,7 +249,10 @@ final class StatusPanelController: NSObject {
 
     func close() {
         if panel.isVisible { lastClosed = Date() }
-        AppModel.shared.panelDetail = nil   // next time, open on the overview again
+        // Next time, open fresh: nothing expanded, no stale messages.
+        AppModel.shared.panelVisible = false
+        AppModel.shared.expandedVital = nil
+        AppModel.shared.panelMessage = nil
         panel.orderOut(nil)
         if let monitor = outsideClickMonitor { NSEvent.removeMonitor(monitor) }
         outsideClickMonitor = nil

@@ -172,4 +172,79 @@ final class ModuleTests: XCTestCase {
         print("Top CPU:", apps.sorted { $0.cpu > $1.cpu }.prefix(3).map { "\($0.name) \(Int($0.cpu))%" })
         print("Top power:", apps.sorted { $0.power > $1.power }.prefix(3).map { "\($0.name) \(String(format: "%.2f", $0.power)) W" })
     }
+
+    func testVitalsReadPlausibleValuesOnThisMac() throws {
+        let swap = try XCTUnwrap(SwapUsage.current())
+        XCTAssertLessThanOrEqual(swap.used, max(swap.total, 1))
+        XCTAssertEqual(LoadAverage.current().count, 3)
+
+        let disk = try XCTUnwrap(DiskSpace.startupVolume())
+        XCTAssertGreaterThan(disk.total, disk.available)
+        XCTAssertGreaterThanOrEqual(disk.available, disk.free)
+        print("Disk: \(Format.bytes(disk.free)) free + \(Format.bytes(disk.purgeable)) purgeable of \(Format.bytes(disk.total))")
+
+        let power = PowerDetails.current()
+        print("Power: system \(power.systemWatts.map { String(format: "%.1f W", $0) } ?? "–"), adapter \(power.adapterWatts.map { "\($0) W" } ?? "–"), battery \(power.batteryTemperature.map { String(format: "%.1f °C", $0) } ?? "–"), remaining \(power.minutesRemaining.map(String.init) ?? "–") min")
+        if let watts = power.systemWatts { XCTAssertTrue((0.5...300).contains(watts), "\(watts)") }
+        if let temperature = power.batteryTemperature { XCTAssertTrue((5...70).contains(temperature)) }
+
+        let link = try XCTUnwrap(NetworkLink.current(), "this Mac is online")
+        print("Link: \(link.kind.rawValue) on \(link.interface) \(link.address), VPN \(link.vpnActive)")
+        XCTAssertTrue(link.address.split(separator: ".").count == 4)
+
+        let snapshot = { let s = SystemSampler(); _ = s.sample(); return s.sample() }()
+        XCTAssertEqual(snapshot.loadAverage.count, 3)
+        XCTAssertGreaterThanOrEqual(snapshot.diskAvailable, snapshot.diskFree)
+    }
+
+    func testKeepAwakeHoldsAndReleasesASystemAssertion() throws {
+        func assertionListed() -> Bool {
+            (Shell.run("/usr/bin/pmset", ["-g", "assertions"]).output ?? "").contains(KeepAwake.assertionName)
+        }
+        let awake = KeepAwake()
+        XCTAssertTrue(awake.start(for: 120))
+        XCTAssertTrue(awake.isActive)
+        XCTAssertTrue(assertionListed(), "macOS should list the assertion")
+        let end = try XCTUnwrap(awake.endsAt)
+        XCTAssertEqual(end.timeIntervalSinceNow, 120, accuracy: 3)
+        awake.stop()
+        XCTAssertFalse(awake.isActive)
+        XCTAssertFalse(assertionListed(), "released on stop")
+    }
+
+    func testRunawayNeedsSustainedLoadAndClearsWhenItStops() {
+        func app(_ name: String, cpu: Double, pid: Int32) -> AppUsage {
+            var usage = AppUsage(name: name, bundleURL: nil)
+            usage.cpu = cpu
+            usage.pids = [pid]
+            return usage
+        }
+        var detector = RunawayDetector()
+        XCTAssertTrue(detector.observe([app("indexer", cpu: 95, pid: 10), app("burst", cpu: 99, pid: 11)], excluding: 1).isEmpty,
+                      "one busy minute is not a runaway")
+        let second = detector.observe([app("indexer", cpu: 97, pid: 10), app("burst", cpu: 3, pid: 11)], excluding: 1)
+        XCTAssertEqual(second.map(\.name), ["indexer"])
+        XCTAssertEqual(second.first?.minutes, 2)
+        XCTAssertEqual(detector.observe([app("indexer", cpu: 99, pid: 10)], excluding: 1).first?.minutes, 3)
+        XCTAssertTrue(detector.observe([app("indexer", cpu: 20, pid: 10)], excluding: 1).isEmpty, "cleared once it calms down")
+        XCTAssertTrue(detector.observe([app("self", cpu: 100, pid: 1), app("self", cpu: 100, pid: 1)], excluding: 1).isEmpty)
+    }
+
+    func testEjectsAMountedDiskImage() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("sweepwell-eject-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let image = folder.appendingPathComponent("SweepwellEjectTest.dmg")
+        XCTAssertTrue(Shell.run("/usr/bin/hdiutil", ["create", "-size", "4m", "-fs", "HFS+", "-volname", "SweepwellEjectTest", image.path]).succeeded)
+        XCTAssertTrue(Shell.run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-noautoopen", image.path]).succeeded)
+
+        // -nobrowse hides it from Finder but it is still an ejectable volume.
+        let volume = try XCTUnwrap(ExternalVolume.mounted().first { $0.name == "SweepwellEjectTest" }
+            ?? FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [])?
+                .first { $0.lastPathComponent == "SweepwellEjectTest" }
+                .map { ExternalVolume(url: $0, name: "SweepwellEjectTest", total: 0, available: 0) })
+        XCTAssertTrue(volume.isDiskImage)
+        try volume.eject()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: volume.url.path), "unmounted")
+    }
 }

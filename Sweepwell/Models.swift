@@ -59,6 +59,7 @@ final class JunkModel {
         let requests = items.map { RemovalRequest(url: $0.url, size: $0.size, purpose: $0.kind.removalPurpose) }
         Task {
             let result = await background { remover.remove(requests, mode: mode) }
+            AppModel.shared.recordSweep(result)
             let gone = Set(result.removed.map(\.path))
             groups = groups.compactMap { group in
                 var group = group
@@ -149,6 +150,7 @@ final class LargeFilesModel {
         let requests = targets.map { RemovalRequest(url: $0.url, size: $0.size, purpose: .userFile) }
         Task {
             let result = await background { remover.remove(requests, mode: mode) }
+            AppModel.shared.recordSweep(result)
             let gone = Set(result.removed.map(\.path))
             files.removeAll { gone.contains($0.id) }
             selected.subtract(gone)
@@ -231,6 +233,7 @@ final class DuplicatesModel {
         let batch = requests
         Task {
             let result = await background { remover.remove(batch, mode: mode) }
+            AppModel.shared.recordSweep(result)
             let gone = Set(result.removed.map(\.path))
             groups = groups.compactMap { group in
                 let remaining = group.files.filter { !gone.contains($0.id) }
@@ -303,6 +306,7 @@ final class SpaceLensModel {
         let request = RemovalRequest(url: node.url, size: node.size, purpose: .userFile)
         Task {
             let result = await background { remover.remove([request], mode: mode) }
+            AppModel.shared.recordSweep(result)
             if let failure = result.failures.first {
                 message = "Could not remove “\(node.name)”: \(failure.message)"
             } else {
@@ -375,6 +379,7 @@ final class UninstallerModel {
         let leftovers = app.leftovers.filter { !keptLeftovers.contains($0.id) }
         Task {
             let result = await background { inventory.uninstall(app, leftovers: leftovers, mode: mode) }
+            AppModel.shared.recordSweep(result)
             if result.removed.contains(app.url) {
                 apps.removeAll { $0.id == app.id }
                 selectedAppID = visibleApps.first?.id

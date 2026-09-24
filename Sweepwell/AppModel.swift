@@ -33,13 +33,34 @@ final class AppModel {
     var hasFullDiskAccess = true
     var snapshot = SystemSnapshot()
     var volumes: [ExternalVolume] = []
-    /// Recent network samples (bytes/s), oldest first, for the menu bar panel's sparkline.
+    /// Recent samples, oldest first, for the menu bar panel's graphs. Cleared after a gap so a
+    /// graph never draws a line straight across the minutes the panel was closed.
     var networkHistory: [(down: Double, up: Double)] = []
+    var cpuHistory: [Double] = []
+    var pressureHistory: [Double] = []
+    private var lastSample: Date?
     var panelMessage: String?
-    /// Which tile of the menu bar panel is opened up into its per-app breakdown, if any.
-    var panelDetail: PanelDetail?
+
+    // Menu bar panel
+    /// Set by the status item while its panel is on screen; per-app figures are only
+    /// gathered then.
+    var panelVisible = false
+    /// The vital whose row is opened up into its per-app breakdown, if any.
+    var expandedVital: Vital?
     var appUsage: [AppUsage] = []
     private let usageSampler = AppUsageSampler()
+    /// Apps that have kept a core busy for minutes. Found by the watchdog, which runs even
+    /// with nothing on screen, so this only changes when the set of runaways changes.
+    var runaways: [RunawayDetector.Runaway] = []
+    /// Tells the status item to show or hide its attention dot.
+    var onAttentionChange: ((Bool) -> Void)?
+    private(set) var needsAttention = false
+    let keepAwake = KeepAwake()
+    /// Bumped when Keep Awake starts or stops, since KeepAwake itself is not observable.
+    var keepAwakeRevision = 0
+    var trash = TrashStatus()
+    var ledger = SweepLedger.load()
+    private var watchdog: Task<Void, Never>?
 
     let junk: JunkModel
     let largeFiles: LargeFilesModel
@@ -78,6 +99,7 @@ final class AppModel {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+        startWatchdog()
     }
 
     /// True while the main window, Settings or the menu bar panel is actually showing.
@@ -93,9 +115,18 @@ final class AppModel {
     func sampleNow() async {
         let sampler = sampler
         let (snapshot, volumes) = await Task.detached { (sampler.sample(), ExternalVolume.mounted()) }.value
+        if let lastSample, Date().timeIntervalSince(lastSample) > 10 {
+            networkHistory = []
+            cpuHistory = []
+            pressureHistory = []
+        }
+        lastSample = Date()
         self.snapshot = snapshot
         self.volumes = volumes
-        networkHistory = Array((networkHistory + [(snapshot.networkIn, snapshot.networkOut)]).suffix(40))
+        networkHistory = Array((networkHistory + [(snapshot.networkIn, snapshot.networkOut)]).suffix(45))
+        cpuHistory = Array((cpuHistory + [snapshot.cpuUsage]).suffix(45))
+        pressureHistory = Array((pressureHistory + [snapshot.memoryPressure]).suffix(45))
+        if panelVisible { await sampleAppUsage(includeNetwork: expandedVital == .network) }
     }
 
     private func autoCleanWhenReady() {
@@ -138,71 +169,67 @@ final class AppModel {
 
     // MARK: Menu bar panel
 
-    var health: HealthAssessment { .assess(snapshot, brokenLaunchItems: startup.brokenCount) }
-
-    struct Recommendation {
-        let symbol: String
-        let title: String
-        let detail: String
-        let actionTitle: String?
-        let module: Module
-        var startsScan = false
-    }
-
-    /// One suggestion, from what Sweepwell can see locally. Most urgent rule wins.
-    var recommendation: Recommendation {
-        let s = snapshot
-        if s.diskTotal > 0, s.diskFraction > 0.85 {
-            return .init(symbol: "internaldrive.fill", title: "Make room on your disk",
-                         detail: "Only \(Format.bytes(s.diskAvailable)) is left. A junk scan usually finds the quickest savings.",
-                         actionTitle: "Find Junk", module: .junk, startsScan: true)
-        }
-        if junk.phase == .results, junk.selectedSize > 500 << 20 {
-            return .init(symbol: "bubbles.and.sparkles", title: "Clean \(Format.bytes(junk.selectedSize)) of junk",
-                         detail: "Your last scan found caches and leftovers that are safe to remove.",
-                         actionTitle: "Review & Clean", module: .junk)
-        }
-        if startup.brokenCount > 0 {
-            return .init(symbol: "bolt.slash.fill", title: "Remove \(startup.brokenCount) broken startup item\(startup.brokenCount == 1 ? "" : "s")",
-                         detail: "They belong to apps that are gone, and macOS still tries to launch them.",
-                         actionTitle: "Show Them", module: .startup)
-        }
-        if s.memoryPressure > 0.75 {
-            return .init(symbol: "memorychip.fill", title: "Memory is under pressure",
-                         detail: "See which apps are using the most and quit the ones you do not need.",
-                         actionTitle: "Show Apps", module: .startup)
-        }
-        if s.uptime > 10 * 86_400 {
-            return .init(symbol: "arrow.clockwise.circle.fill", title: "Restart your Mac",
-                         detail: "It has been up for \(Format.uptime(s.uptime)). A restart clears swap and stuck background processes.",
-                         actionTitle: nil, module: .overview)
-        }
-        if junk.phase == .idle {
-            return .init(symbol: "sparkles", title: "Run a Smart Scan",
-                         detail: "Nothing has been checked this session. It takes a moment and removes nothing on its own.",
-                         actionTitle: "Smart Scan", module: .overview, startsScan: true)
-        }
-        return .init(symbol: "checkmark.seal.fill", title: "Everything looks tidy",
-                     detail: "No junk worth cleaning, no broken startup items, and plenty of room.",
-                     actionTitle: nil, module: .overview)
-    }
-
-    /// Refreshes the per-app figures. Only the breakdown view calls this, and only while it
-    /// is on screen, so nothing is measured for a list nobody is reading.
     func sampleAppUsage(includeNetwork: Bool) async {
         let sampler = usageSampler
         appUsage = await Task.detached { sampler.sample(includeNetwork: includeNetwork) }.value
     }
 
+    /// Once a minute, visible or not: a cheap per-app CPU check (each figure is that minute's
+    /// average) plus the few readings that justify interrupting someone. Observed state is
+    /// only written when it changes, so a closed window is never asked to redraw.
+    private func startWatchdog() {
+        let sampler = AppUsageSampler()
+        watchdog = Task { [weak self] in
+            var detector = RunawayDetector()
+            _ = await Task.detached { sampler.sample() }.value   // baseline for the first minute
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                let (apps, pressure, disk) = await Task.detached {
+                    (sampler.sample(), MemoryPressure.current() ?? 0, DiskSpace.startupVolume())
+                }.value
+                guard let self else { return }
+                let found = detector.observe(apps)
+                if found.map(\.id) != self.runaways.map(\.id) { self.runaways = found }
+                let urgent = !found.isEmpty || pressure > 0.85 || (disk.map { $0.available < 5 << 30 } ?? false)
+                if urgent != self.needsAttention {
+                    self.needsAttention = urgent
+                    self.onAttentionChange?(urgent)
+                }
+            }
+        }
+    }
+
     func eject(_ volume: ExternalVolume) {
         Task {
             let error = await background { () -> String? in
-                do { try NSWorkspace.shared.unmountAndEjectDevice(at: volume.url); return nil }
-                catch { return error.localizedDescription }
+                do { try volume.eject(); return nil } catch { return error.localizedDescription }
             }
             panelMessage = error.map { "Could not eject \(volume.name): \($0)" }
             if error == nil { volumes.removeAll { $0.id == volume.id } }
         }
+    }
+
+    func ejectAll() {
+        let targets = volumes
+        guard !targets.isEmpty else { return }
+        Task {
+            let failures = await background { targets.compactMap { volume -> String? in
+                do { try volume.eject(); return nil } catch { return volume.name }
+            } }
+            volumes.removeAll { volume in !failures.contains(volume.name) }
+            panelMessage = failures.isEmpty
+                ? "Ejected \(targets.count) volume\(targets.count == 1 ? "" : "s"). Safe to unplug."
+                : "Still in use, not ejected: \(failures.joined(separator: ", "))"
+        }
+    }
+
+    func toggleKeepAwake(for duration: TimeInterval?) {
+        if keepAwake.isActive, duration == nil || keepAwake.endsAt == nil {
+            keepAwake.stop()
+        } else {
+            keepAwake.start(for: duration)
+        }
+        keepAwakeRevision += 1
     }
 
     // MARK: Smart Scan

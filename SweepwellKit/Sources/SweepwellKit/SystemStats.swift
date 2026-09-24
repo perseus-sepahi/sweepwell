@@ -25,8 +25,16 @@ public struct SystemSnapshot: Sendable {
     public var networkOut: Double = 0
     public var batteryCycles: Int?
     public var batteryHealth: Double?
+    /// Truly free bytes; `diskAvailable - diskFree` is purgeable space macOS reclaims on demand.
+    public var diskFree: Int64 = 0
+    public var swap: SwapUsage?
+    public var loadAverage: [Double] = []
+    public var power = PowerDetails()
+    public var link: NetworkLink?
 
     public init() {}
+
+    public var diskPurgeable: Int64 { max(0, diskAvailable - diskFree) }
 
     public var memoryFraction: Double { memoryTotal > 0 ? Double(memoryUsed) / Double(memoryTotal) : 0 }
     public var diskUsed: Int64 { max(0, diskTotal - diskAvailable) }
@@ -39,7 +47,7 @@ public final class SystemSampler: @unchecked Sendable {
     private var previousTicks: (busy: UInt64, total: UInt64)?
     private var previousNetwork: (counters: NetworkCounters, time: Date)?
     private var cachedBattery: (health: BatteryHealth?, time: Date)?
-    private var cachedDisk: (total: Int64, available: Int64, time: Date)?
+    private var cachedDisk: (space: DiskSpace?, time: Date)?
     private let thermal = ThermalSensors()
     private let lock = NSLock()
 
@@ -57,6 +65,10 @@ public final class SystemSampler: @unchecked Sendable {
         snapshot.cpuTemperature = thermal?.cpuTemperature()
         readNetwork(into: &snapshot)
         readBatteryHealth(into: &snapshot)
+        snapshot.swap = SwapUsage.current()
+        snapshot.loadAverage = LoadAverage.current()
+        if snapshot.batteryLevel != nil { snapshot.power = PowerDetails.current() }
+        snapshot.link = NetworkLink.current()
         return snapshot
     }
 
@@ -129,21 +141,18 @@ public final class SystemSampler: @unchecked Sendable {
     /// "Available for important usage" makes the system tally purgeable space, which is by far
     /// the costliest reading here, and free space does not move second to second.
     private func readDisk(into snapshot: inout SystemSnapshot) {
-        let cached: (total: Int64, available: Int64)? = lock.withLock {
-            guard let disk = cachedDisk, Date().timeIntervalSince(disk.time) < 20 else { return nil }
-            return (disk.total, disk.available)
-        }
-        if let cached {
-            snapshot.diskTotal = cached.total
-            snapshot.diskAvailable = cached.available
-            return
-        }
-        let keys: Set<URLResourceKey> = [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]
-        guard let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: keys) else { return }
-        snapshot.diskTotal = Int64(values.volumeTotalCapacity ?? 0)
-        snapshot.diskAvailable = values.volumeAvailableCapacityForImportantUsage ?? 0
-        let (total, available) = (snapshot.diskTotal, snapshot.diskAvailable)
-        lock.withLock { cachedDisk = (total, available, Date()) }
+        let space: DiskSpace? = lock.withLock {
+            if let cached = cachedDisk, Date().timeIntervalSince(cached.time) < 20 { return cached.space }
+            return nil
+        } ?? {
+            let fresh = DiskSpace.startupVolume()
+            lock.withLock { cachedDisk = (fresh, Date()) }
+            return fresh
+        }()
+        guard let space else { return }
+        snapshot.diskTotal = space.total
+        snapshot.diskAvailable = space.available
+        snapshot.diskFree = space.free
     }
 
     private func readBattery(into snapshot: inout SystemSnapshot) {

@@ -199,6 +199,7 @@ public struct HealthAssessment: Sendable, Equatable {
             if free < 0.10 { deductions.append((30, "Startup disk is almost full")) }
             else if free < 0.20 { deductions.append((15, "Startup disk is getting full")) }
         }
+        if let swap = s.swap, swap.used >= 2 << 30 { deductions.append((15, "Swapping \(Format.bytes(swap.used)) to disk")) }
         if s.memoryPressure > 0.80 { deductions.append((25, "Memory pressure is high")) }
         else if s.memoryPressure > 0.60 { deductions.append((10, "Memory pressure is elevated")) }
         switch s.thermalState {
