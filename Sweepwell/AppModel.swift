@@ -49,18 +49,11 @@ final class AppModel {
     var expandedVital: Vital?
     var appUsage: [AppUsage] = []
     private let usageSampler = AppUsageSampler()
-    /// Apps that have kept a core busy for minutes. Found by the watchdog, which runs even
-    /// with nothing on screen, so this only changes when the set of runaways changes.
-    var runaways: [RunawayDetector.Runaway] = []
-    /// Tells the status item to show or hide its attention dot.
-    var onAttentionChange: ((Bool) -> Void)?
-    private(set) var needsAttention = false
     let keepAwake = KeepAwake()
     /// Bumped when Keep Awake starts or stops, since KeepAwake itself is not observable.
     var keepAwakeRevision = 0
     var trash = TrashStatus()
     var ledger = SweepLedger.load()
-    private var watchdog: Task<Void, Never>?
 
     let junk: JunkModel
     let largeFiles: LargeFilesModel
@@ -99,7 +92,6 @@ final class AppModel {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
-        startWatchdog()
     }
 
     /// True while the main window, Settings or the menu bar panel is actually showing.
@@ -172,31 +164,6 @@ final class AppModel {
     func sampleAppUsage(includeNetwork: Bool) async {
         let sampler = usageSampler
         appUsage = await Task.detached { sampler.sample(includeNetwork: includeNetwork) }.value
-    }
-
-    /// Once a minute, visible or not: a cheap per-app CPU check (each figure is that minute's
-    /// average) plus the few readings that justify interrupting someone. Observed state is
-    /// only written when it changes, so a closed window is never asked to redraw.
-    private func startWatchdog() {
-        let sampler = AppUsageSampler()
-        watchdog = Task { [weak self] in
-            var detector = RunawayDetector()
-            _ = await Task.detached { sampler.sample() }.value   // baseline for the first minute
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
-                let (apps, pressure, disk) = await Task.detached {
-                    (sampler.sample(), MemoryPressure.current() ?? 0, DiskSpace.startupVolume())
-                }.value
-                guard let self else { return }
-                let found = detector.observe(apps)
-                if found.map(\.id) != self.runaways.map(\.id) { self.runaways = found }
-                let urgent = !found.isEmpty || pressure > 0.85 || (disk.map { $0.available < 5 << 30 } ?? false)
-                if urgent != self.needsAttention {
-                    self.needsAttention = urgent
-                    self.onAttentionChange?(urgent)
-                }
-            }
-        }
     }
 
     func eject(_ volume: ExternalVolume) {

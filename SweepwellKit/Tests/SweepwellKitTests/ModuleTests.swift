@@ -212,24 +212,6 @@ final class ModuleTests: XCTestCase {
         XCTAssertFalse(assertionListed(), "released on stop")
     }
 
-    func testRunawayNeedsSustainedLoadAndClearsWhenItStops() {
-        func app(_ name: String, cpu: Double, pid: Int32) -> AppUsage {
-            var usage = AppUsage(name: name, bundleURL: nil)
-            usage.cpu = cpu
-            usage.pids = [pid]
-            return usage
-        }
-        var detector = RunawayDetector()
-        XCTAssertTrue(detector.observe([app("indexer", cpu: 95, pid: 10), app("burst", cpu: 99, pid: 11)], excluding: 1).isEmpty,
-                      "one busy minute is not a runaway")
-        let second = detector.observe([app("indexer", cpu: 97, pid: 10), app("burst", cpu: 3, pid: 11)], excluding: 1)
-        XCTAssertEqual(second.map(\.name), ["indexer"])
-        XCTAssertEqual(second.first?.minutes, 2)
-        XCTAssertEqual(detector.observe([app("indexer", cpu: 99, pid: 10)], excluding: 1).first?.minutes, 3)
-        XCTAssertTrue(detector.observe([app("indexer", cpu: 20, pid: 10)], excluding: 1).isEmpty, "cleared once it calms down")
-        XCTAssertTrue(detector.observe([app("self", cpu: 100, pid: 1), app("self", cpu: 100, pid: 1)], excluding: 1).isEmpty)
-    }
-
     func testEjectsAMountedDiskImage() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("sweepwell-eject-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

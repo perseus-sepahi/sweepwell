@@ -70,12 +70,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AppModel.shared.expandedVital = hooks["SWEEPWELL_PANEL_EXPAND"].flatMap(Vital.init(rawValue:))
             }
         }
-        if hooks["SWEEPWELL_FAKE_RUNAWAY"] == "1" {
-            // UI check: what a stuck app looks like, without having to wait two minutes for one.
-            AppModel.shared.runaways = [RunawayDetector.Runaway(id: "demo", name: "siriactionsd", bundleURL: nil, pids: [],
-                                                                cpu: 97, minutes: 4)]
-            AppModel.shared.onAttentionChange?(true)
-        }
         if hooks["SWEEPWELL_TEST_REOPEN"] == "1" {
             // UI check: the window was closed at launch; prove it can come back.
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Self.showMainWindow() }
@@ -151,35 +145,6 @@ final class StatusPanelController: NSObject {
     private var outsideClickMonitor: Any?
     private var lastClosed = Date.distantPast
 
-    /// The broom as a template image, or, when something needs a look, the broom in the menu
-    /// bar's own text colour with a small orange dot. Drawn at render time so it follows light
-    /// and dark menu bars; same size either way, so the item never grows into the notch.
-    static func statusImage(attention: Bool) -> NSImage? {
-        guard let glyph = NSImage(named: "BroomGlyph") ?? NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil) else { return nil }
-        let size = NSSize(width: 18, height: 18)
-        glyph.size = size
-        guard attention else {
-            glyph.isTemplate = true
-            glyph.accessibilityDescription = "Sweepwell"
-            return glyph
-        }
-        let image = NSImage(size: size, flipped: false) { rect in
-            let tinted = NSImage(size: size, flipped: false) { inner in
-                glyph.draw(in: inner)
-                NSColor.labelColor.set()
-                inner.fill(using: .sourceAtop)
-                return true
-            }
-            tinted.draw(in: rect)
-            let dot = NSRect(x: rect.maxX - 7, y: rect.maxY - 7, width: 6.5, height: 6.5)
-            NSColor.systemOrange.setFill()
-            NSBezierPath(ovalIn: dot).fill()
-            return true
-        }
-        image.accessibilityDescription = "Sweepwell, something needs a look"
-        return image
-    }
-
     init(model: AppModel) {
         panel = KeyPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         hosting = NSHostingView(rootView: AnyView(EmptyView()))
@@ -197,12 +162,14 @@ final class StatusPanelController: NSObject {
         hosting.rootView = AnyView(MenuPanelView(dismiss: { [weak self] in self?.close() },
                                                  sizeChanged: { [weak self] in self?.fit(to: $0) }).environment(model))
 
-        model.onAttentionChange = { [weak self] attention in
-            self?.statusItem.button?.image = Self.statusImage(attention: attention)
-        }
         if let button = statusItem.button {
             // The broom from the app icon, as a template so macOS tints it for the menu bar.
-            button.image = Self.statusImage(attention: false)
+            // The broom from the app icon, as a template so macOS tints it for the menu bar.
+            let glyph = NSImage(named: "BroomGlyph") ?? NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
+            glyph?.isTemplate = true
+            glyph?.size = NSSize(width: 18, height: 18)
+            glyph?.accessibilityDescription = "Sweepwell"
+            button.image = glyph
             button.imagePosition = .imageOnly
             button.target = self
             button.action = #selector(toggle)

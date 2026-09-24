@@ -135,17 +135,6 @@ extension AppModel {
         let s = snapshot
         var found: [PanelAlert] = []
 
-        for runaway in runaways.prefix(2) {
-            let app = runaway.pids.lazy.compactMap { NSRunningApplication(processIdentifier: $0) }
-                .first { $0.activationPolicy == .regular }
-            found.append(PanelAlert(
-                id: "runaway-" + runaway.id, severity: .urgent, symbol: "flame.fill",
-                title: "\(runaway.name) has been busy for \(runaway.minutes) min",
-                detail: app == nil
-                    ? "\(Int(runaway.cpu))% of a core on average. It is part of macOS; if it keeps going, a restart settles it."
-                    : "\(Int(runaway.cpu))% of a core on average, which usually means it is stuck.",
-                action: app.map { .quit($0) }))
-        }
         if let temperature = s.cpuTemperature, temperature >= 90 {
             found.append(PanelAlert(id: "hot", severity: .urgent, symbol: "thermometer.high",
                                     title: "Running hot at \(Int(temperature)) °C",

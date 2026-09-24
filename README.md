@@ -23,9 +23,7 @@ Clicking the broom in the menu bar opens a status panel:
 
 - **A plain status line** ("All clear", "Worth a glance", "Needs a look") with the Mac model,
   uptime and how many watts the whole Mac is drawing.
-- **Heads-up rows** for what actually matters: an app stuck at high CPU for minutes (found by a
-  once-a-minute background check that costs about 0.1% CPU), memory pressure or heavy swap,
-  a nearly full disk (with how much of it is purgeable), overheating, broken startup items and
+- **Heads-up rows** for what actually matters: memory pressure or heavy swap, a nearly full disk (with how much of it is purgeable), overheating, broken startup items and
   battery wear. Each has one action: Quit, Details or Scan.
 - **Live vitals**: processor, memory, disk, power and network, each with a graph and its top
   consumer. Clicking a row opens it in place: the facts behind the number (load averages,
@@ -36,8 +34,8 @@ Clicking the broom in the menu bar opens a status panel:
   mounted drives and disk images; and Smart Scan.
 - **A running total** of what Sweepwell has swept.
 
-The broom gets an orange dot when something urgent is found: a stuck app, memory under real
-pressure, or under 5 GB free. Nothing here needs a network connection.
+Nothing here needs a network connection, and nothing runs in the background while the panel
+and window are closed.
 
 The **Glass** slider (sidebar and Settings) runs from solid cards to Liquid Glass. It needs
 macOS 26 or later for real glass; older systems get a material-based approximation. The panel
