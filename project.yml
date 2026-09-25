@@ -2,7 +2,7 @@ name: Sweepwell
 options:
   bundleIdPrefix: com.perseussepahi
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "26.0"
   createIntermediateGroups: true
 packages:
   SweepwellKit:
@@ -28,7 +28,7 @@ targets:
       properties:
         CFBundleDisplayName: Sweepwell
         LSApplicationCategoryType: public.app-category.utilities
-        LSMinimumSystemVersion: "14.0"
+        LSMinimumSystemVersion: "26.0"
         NSHumanReadableCopyright: "© 2026 Perseus Sepahi"
         NSAppleEventsUsageDescription: "Sweepwell asks Finder to move apps that need an administrator password to the Trash."
     entitlements:

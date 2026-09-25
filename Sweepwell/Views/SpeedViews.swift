@@ -164,7 +164,7 @@ private struct TaskCard: View {
                     Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary).help("Asks for an administrator password")
                 }
             }
-            Text(task.detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(task.detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
             Spacer(minLength: 0)
             HStack {
                 switch status {

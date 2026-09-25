@@ -15,8 +15,7 @@ struct ModuleScaffold<Content: View, Footer: View>: View {
                     .foregroundStyle(.white)
                     .frame(width: 46, height: 46)
                     .background(module.gradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(.white.opacity(0.3)))
-                    .shadow(color: module.accent.opacity(0.45), radius: 12, y: 5)
+                    .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(module.title).font(.system(size: 24, weight: .bold, design: .rounded))
                     Text(module.tagline).font(.callout).foregroundStyle(.secondary)
@@ -28,8 +27,12 @@ struct ModuleScaffold<Content: View, Footer: View>: View {
             .padding(.bottom, 18)
 
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            footer
+        }
+        // The footer floats over the content as a glass bar; scrolling content passes under
+        // it with the system's soft scroll-edge fade, as in Apple's own apps. Screens without
+        // a footer get no bar at all: an empty one still takes part in layout.
+        .safeAreaBar(edge: .bottom) {
+            if Footer.self != EmptyView.self { footer }
         }
     }
 }
@@ -40,9 +43,9 @@ extension ModuleScaffold where Footer == EmptyView {
     }
 }
 
-/// The big round call-to-action in the middle of an idle module: a glossy sphere whose halo
-/// rings ripple out while the pointer is over it. At rest nothing animates, so an idle
-/// window costs no CPU.
+/// The big round call-to-action in the middle of an idle module: a sphere of tinted Liquid
+/// Glass that bends the colours behind it and responds to the pointer. Halo rings ripple out
+/// on hover only; at rest nothing animates, so an idle window costs no CPU.
 struct OrbButton: View {
     let title: String
     let module: Module
@@ -61,29 +64,23 @@ struct OrbButton: View {
                         .animation(.easeOut(duration: hovering ? 1.1 : 0.4).delay(hovering ? Double(ring) * 0.18 : 0),
                                    value: hovering)
                 }
-                Circle().fill(module.gradient)
-                    .overlay {
-                        // Gloss: a soft highlight top-left, as if lit from above.
-                        Circle().fill(RadialGradient(colors: [.white.opacity(0.55), .clear], center: .init(x: 0.32, y: 0.22),
-                                                     startRadius: 2, endRadius: diameter * 0.6))
-                    }
-                    .overlay(Circle().strokeBorder(.white.opacity(0.45), lineWidth: 1.5))
-                    .frame(width: diameter, height: diameter)
-                    .shadow(color: module.accent.opacity(hovering ? 0.8 : 0.5), radius: hovering ? 34 : 22, y: 10)
+                // A soft pool of the module's colour for the glass to refract.
+                Circle().fill(module.gradient).frame(width: diameter * 0.9, height: diameter * 0.9)
+                    .blur(radius: 18).opacity(0.85)
                 Text(title)
                     .font(.system(size: diameter * 0.17, weight: .bold, design: .rounded))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+                    .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                    .frame(width: diameter, height: diameter)
+                    .glassEffect(.control(tint: module.accent.opacity(0.55)), in: .circle)
             }
             .frame(width: diameter * 1.9, height: diameter * 1.35)
-            .scaleEffect(hovering ? 1.05 : 1)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .focusable(false)
         .onHover { hovering = $0 }
-        .animation(.spring(duration: 0.35), value: hovering)
     }
 }
 
@@ -166,26 +163,52 @@ struct ScanningView: View {
     }
 }
 
+/// Sweepwell's button: a capsule of interactive Liquid Glass, tinted with the module colour
+/// when it is the primary action. Inside a glass bar it draws as plain text, so glass is
+/// never stacked on glass.
 struct PillButtonStyle: ButtonStyle {
     var prominent = false
     var tint: Color = .accentColor
-    @Environment(\.isEnabled) private var enabled
+    var large = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .semibold))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 7)
-            .foregroundStyle(prominent ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.primary))
-            .background(prominent ? AnyShapeStyle(tint) : AnyShapeStyle(Color.quietButton), in: Capsule())
-            .shadow(color: prominent && enabled ? tint.opacity(0.4) : .clear, radius: 8, y: 3)
-            .opacity(enabled ? 1 : 0.4)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(duration: 0.2), value: configuration.isPressed)
+        PillButtonBody(configuration: configuration, prominent: prominent, tint: tint, large: large)
     }
 }
 
-/// Bottom bar with the running total and the one destructive button of a module.
+private struct PillButtonBody: View {
+    let configuration: ButtonStyle.Configuration
+    let prominent: Bool
+    let tint: Color
+    let large: Bool
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.onGlass) private var onGlass
+    @State private var hovering = false
+
+    var body: some View {
+        let label = configuration.label
+            .font(.system(size: large ? 14 : 13, weight: .semibold))
+            .padding(.horizontal, large ? 22 : 16)
+            .padding(.vertical, large ? 10 : 7)
+        Group {
+            if onGlass && !prominent {
+                label
+                    .foregroundStyle(.primary)
+                    .background(hovering || configuration.isPressed ? Color.hoverFill : .clear, in: Capsule())
+            } else {
+                label
+                    .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                    .glassEffect(.control(tint: prominent ? tint : nil), in: .capsule)
+            }
+        }
+        .opacity(enabled ? 1 : 0.45)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// The floating bar at the bottom of a module: the running total in one glass capsule, the
+/// module's one primary action in another, tinted. They share a glass container, so they
+/// read as one piece of glass that parts in the middle.
 struct ActionBar<Leading: View>: View {
     let module: Module
     let actionTitle: String
@@ -194,18 +217,22 @@ struct ActionBar<Leading: View>: View {
     @ViewBuilder var leading: Leading
 
     var body: some View {
-        HStack(spacing: 16) {
-            leading
-            Spacer()
-            Button(actionTitle, action: action)
-                .buttonStyle(PillButtonStyle(prominent: true, tint: module.accent))
-                .disabled(!enabled)
-                .keyboardShortcut(.defaultAction)
+        GlassEffectContainer(spacing: 16) {
+            HStack(spacing: 12) {
+                HStack(spacing: 14) { leading }
+                    .environment(\.onGlass, true)
+                    .padding(.leading, 20).padding(.trailing, 8).padding(.vertical, 7)
+                    .glassEffect(.regular, in: .capsule)
+                Spacer(minLength: 12)
+                Button(actionTitle, action: action)
+                    .buttonStyle(PillButtonStyle(prominent: true, tint: module.accent, large: true))
+                    .disabled(!enabled)
+                    .keyboardShortcut(.defaultAction)
+            }
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 14)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) { Color.hairline.frame(height: 1) }
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+        .padding(.bottom, 18)
     }
 }
 
@@ -270,8 +297,8 @@ struct ReportBanner: View {
                 }.frame(maxHeight: 90)
             }
         }
-        .padding(12)
-        .card(cornerRadius: 10, highlighted: true)
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .floatingGlass(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .padding(.horizontal, 28)
         .padding(.bottom, 10)
     }

@@ -84,8 +84,12 @@ struct JunkView: View {
                 .frame(width: 300)
 
                 VStack(alignment: .leading, spacing: 10) {
+                    // A line limit rather than fixedSize: fixed text asks for its full height at
+                    // whatever width it is measured with, and the floating bottom bar measures
+                    // layouts narrow, which made this one line per word and pushed the window.
                     Text(focused.kind.summary).font(.callout).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     ScrollView {
                         LazyVStack(spacing: 2) {
                             ForEach(focused.items) { item in ItemRow(item: item) }

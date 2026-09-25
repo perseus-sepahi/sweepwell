@@ -7,7 +7,7 @@ import SweepwellKit
 /// one-tap chores.
 struct MenuPanelView: View {
     @Environment(AppModel.self) private var app
-    @AppStorage(Preferences.glassKey) private var glass = Glassiness.default
+    @AppStorage(Preferences.glassKey) private var glassDial = Glassiness.default
     /// Closes the panel; every action that leaves for a window calls it first.
     var dismiss: () -> Void = {}
     /// The content changed size; the hosting panel resizes itself to match.
@@ -16,6 +16,7 @@ struct MenuPanelView: View {
     /// Which chore has its little confirmation tray open under the keys.
     @State private var tray: Tray?
     enum Tray { case awake, trash }
+    @Namespace private var glass
 
     var body: some View {
         let alerts = app.alerts
@@ -32,10 +33,18 @@ struct MenuPanelView: View {
         }
         .padding(16)
         .frame(width: 384)
-        .background { PanelBackground(glass: glass).shadow(color: .black.opacity(0.28), radius: 14, y: 8) }
+        .background { PanelBackground(glass: glassDial).shadow(color: .black.opacity(0.28), radius: 14, y: 8) }
         .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 30)   // room for that shadow
         .onGeometryChange(for: CGSize.self) { $0.size } action: { sizeChanged($0) }
-        .onChange(of: app.panelVisible) { _, visible in if !visible { tray = nil } }
+        .onChange(of: app.panelVisible) { _, visible in
+            if !visible { tray = nil; return }
+            // UI check: open a chore's tray as the panel appears.
+            switch ProcessInfo.processInfo.environment["SWEEPWELL_PANEL_TRAY"] {
+            case "trash": tray = .trash
+            case "awake": tray = .awake
+            default: break
+            }
+        }
     }
 
     // MARK: Header
@@ -74,7 +83,8 @@ struct MenuPanelView: View {
     private func iconButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 11, weight: .semibold))
-                .frame(width: 24, height: 24).background(Color.quietButton, in: Circle())
+                .frame(width: 26, height: 26)
+                .glassEffect(.control(), in: .circle)
         }
         .buttonStyle(.plain).focusable(false).help(help)
     }
@@ -130,7 +140,8 @@ struct MenuPanelView: View {
             if let size = app.trash.size { return size == 0 ? "Empty" : Format.bytes(size) }
             return "Finder"
         }()
-        return VStack(spacing: 8) {
+        return GlassEffectContainer(spacing: 8) {
+          VStack(spacing: 8) {
             HStack(spacing: 8) {
                 ChoreKey(symbol: awake.isActive ? "cup.and.saucer.fill" : "cup.and.saucer", title: awakeTitle,
                          caption: awake.isActive ? "Tap to stop" : "No sleep", active: awake.isActive, tint: Module.startup.colors[0]) {
@@ -151,8 +162,14 @@ struct MenuPanelView: View {
                     show(.overview, scan: true)
                 }
             }
-            if let tray { trayView(tray) }
+            if let tray {
+                trayView(tray)
+                    .glassEffectID("tray", in: glass)
+                    .glassEffectTransition(.matchedGeometry)
+            }
+          }
         }
+        .animation(.spring(duration: 0.35), value: tray)
     }
 
     @ViewBuilder private func trayView(_ tray: Tray) -> some View {
@@ -175,7 +192,7 @@ struct MenuPanelView: View {
             }
         }
         .padding(10)
-        .background(PanelCard())
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var trashQuestion: String {
@@ -190,8 +207,8 @@ struct MenuPanelView: View {
             .buttonStyle(.plain).focusable(false)
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 10).padding(.vertical, 5)
-            .foregroundStyle(prominent ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.primary))
-            .background(prominent ? AnyShapeStyle(Color.danger) : AnyShapeStyle(Color.quietButton), in: Capsule())
+            .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .background(prominent ? AnyShapeStyle(Color.danger) : AnyShapeStyle(Color.hoverFill), in: Capsule())
     }
 
     // MARK: Footer
@@ -517,9 +534,9 @@ private struct AlertRow: View {
                 Button(action.title) { perform(action) }
                     .buttonStyle(.plain).focusable(false)
                     .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(alert.severity.color.opacity(0.16), in: Capsule())
+                    .padding(.horizontal, 10).padding(.vertical, 4)
                     .foregroundStyle(alert.severity.color)
+                    .glassEffect(.control(tint: alert.severity.color.opacity(0.18)), in: .capsule)
             }
         }
         .padding(.vertical, 7).padding(.trailing, 10).padding(.leading, 6)
@@ -544,20 +561,16 @@ private struct ChoreKey: View {
         Button(action: action) {
             VStack(spacing: 5) {
                 Image(systemName: symbol).font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(active ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(tint))
+                    .foregroundStyle(active ? AnyShapeStyle(.white) : AnyShapeStyle(tint))
                     .frame(height: 20)
                 Text(title).font(.system(size: 11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                    .foregroundStyle(active ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.primary))
+                    .foregroundStyle(active ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                 Text(caption).font(.system(size: 9.5)).lineLimit(1).minimumScaleFactor(0.8)
-                    .foregroundStyle(active ? AnyShapeStyle(Color.onAccent.opacity(0.8)) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(active ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.tertiary))
             }
             .frame(maxWidth: .infinity).padding(.vertical, 9)
-            .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(active ? AnyShapeStyle(tint) : AnyShapeStyle(hovering ? Color.panelTileHover : Color.panelTile))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.hairline))
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .glassEffect(.control(tint: active ? tint : nil), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain).focusable(false)
         .disabled(disabled)

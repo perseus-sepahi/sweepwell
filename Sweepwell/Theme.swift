@@ -66,7 +66,6 @@ extension Color {
     // Window
     static let canvasTop = Color(day: 0xF7F8FD, night: 0x1B1E33)
     static let canvasBottom = Color(day: 0xE8EBF7, night: 0x0D0F1E)
-    static let sidebarTint = Color(day: 0xFFFFFF, night: 0x0B0D1C, dayAlpha: 0.35, nightAlpha: 0.45)
 
     // Surfaces: white cards with shadows by day, translucent glass by night.
     static let surface = Color(day: 0xFFFFFF, night: 0xFFFFFF, dayAlpha: 0.78, nightAlpha: 0.06)
@@ -171,73 +170,71 @@ enum Module: String, CaseIterable, Identifiable {
     ]
 }
 
-// MARK: - Surfaces
+// MARK: - Liquid Glass
 
-/// How much of the app is glass, 0…1, chosen with the slider in the sidebar and Settings.
-/// 0 is the solid look; rising values fade the solid fill out over real Liquid Glass and let
-/// more of the desktop through the window.
+/// Sweepwell follows Apple's Liquid Glass rules: glass is the *navigation layer* — the
+/// sidebar, toolbar, floating bars, buttons and banners that sit above everything else — and
+/// content lives on plain surfaces underneath. Glass on glass, or glass on content cards,
+/// turns to mud, so `.card()` is deliberately not glass.
+///
+/// The Glass dial sets how much of the desktop shows through the window: 0 is an opaque
+/// window, 1 lets the blurred desktop through behind all the content.
 enum Glassiness {
     static let `default` = 0.55
-
-    /// Where the dial switches from frosted `regular` glass to see-through `clear` glass.
-    static let clearThreshold = 0.85
-
-    /// Opacity of the solid layer over the glass. Clear glass does not blur what is behind
-    /// it, so it keeps a scrim: without one, text fights whatever window sits underneath.
-    static func scrim(_ value: Double, floor: Double) -> Double {
-        max(value >= clearThreshold ? floor : 0.12, 1 - value)
-    }
 
     static func label(_ value: Double) -> String {
         switch value {
         case ..<0.05: "Solid"
         case ..<0.4: "Frosted"
-        case ..<clearThreshold: "Glass"
+        case ..<0.85: "Glass"
         default: "Crystal"
         }
     }
 }
 
-/// One surface recipe for every card. Liquid Glass has no intensity dial, only a frosted
-/// `regular` and a see-through `clear` variant, so the dial is built from two layers: the
-/// theme's solid fill, fading out as the value rises, over whichever variant fits the range.
-struct GlassSurface<S: InsettableShape>: ViewModifier {
+extension Glass {
+    /// The glass used for Sweepwell's controls: tinted for primary actions, and interactive so
+    /// it responds to the pointer the way system controls do.
+    static func control(tint: Color? = nil) -> Glass {
+        Glass.regular.tint(tint).interactive()
+    }
+}
+
+/// A content surface: a quiet fill that thins out as the Glass dial rises, so the window's
+/// translucency reaches the cards too, without making them glass.
+struct ContentSurface<S: InsettableShape>: ViewModifier {
     @AppStorage(Preferences.glassKey) private var glass = Glassiness.default
     let shape: S
     var raised = false
 
     func body(content: Content) -> some View {
-        let solid = raised ? Color.surfaceRaised : Color.surface
-        if #available(macOS 26.0, *), glass >= 0.05 {
-            content
-                .background(solid.opacity(Glassiness.scrim(glass, floor: 0.3)), in: shape)
-                .glassEffect(glass >= Glassiness.clearThreshold ? .clear : .regular, in: shape)
-                .shadow(color: .cardShadow, radius: raised ? 14 : 9, y: raised ? 6 : 3)
-        } else {
-            // Before macOS 26 (or with the dial at zero): the theme fill, thinned a little so
-            // a material underneath can still show through when the dial asks for it.
-            content
-                .background(.ultraThinMaterial.opacity(glass), in: shape)
-                .background(solid.opacity(1 - glass * 0.5), in: shape)
-                .overlay(shape.strokeBorder(Color.hairline))
-                .shadow(color: .cardShadow, radius: raised ? 14 : 9, y: raised ? 6 : 3)
-        }
+        content
+            .background((raised ? Color.surfaceRaised : Color.surface).opacity(1 - glass * 0.5), in: shape)
+            .overlay(shape.strokeBorder(Color.hairline))
+            .shadow(color: .cardShadow.opacity(1 - glass * 0.6), radius: raised ? 12 : 7, y: raised ? 5 : 2)
     }
 }
 
 extension View {
-    func card(cornerRadius: CGFloat = 16, highlighted: Bool = false) -> some View {
-        modifier(GlassSurface(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous), raised: highlighted))
+    func card(cornerRadius: CGFloat = 18, highlighted: Bool = false) -> some View {
+        modifier(ContentSurface(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous), raised: highlighted))
     }
 
-    func glassSurface<S: InsettableShape>(_ shape: S, raised: Bool = false) -> some View {
-        modifier(GlassSurface(shape: shape, raised: raised))
+    /// Floating glass: banners, bars and other chrome that hovers over content.
+    func floatingGlass<S: Shape>(_ shape: S, tint: Color? = nil) -> some View {
+        glassEffect(Glass.regular.tint(tint), in: shape)
     }
 }
 
-/// Behind-window vibrancy, so the sidebar picks up the desktop like Finder's does.
+/// Tells nested controls that they already sit on glass, so they draw as plain text instead
+/// of stacking a second pane of glass on the first.
+extension EnvironmentValues {
+    @Entry var onGlass = false
+}
+
+/// Behind-window vibrancy: the blurred desktop that shows through when the Glass dial is up.
 struct VibrantBackground: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .sidebar
+    var material: NSVisualEffectView.Material = .underWindowBackground
 
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
@@ -261,8 +258,9 @@ struct AuroraBackground: View {
         GeometryReader { proxy in
             let reach = max(proxy.size.width, proxy.size.height)
             ZStack {
-                // The more glass, the more of the desktop behind the window shows through.
-                VibrantBackground(material: .underWindowBackground)
+                // Pure SwiftUI, so `backgroundExtensionEffect` can mirror it under the sidebar.
+                // The blurred desktop itself is the window's container background (see
+                // RootView); the more glass, the more of it shows through this tint.
                 LinearGradient(colors: [.canvasTop, .canvasBottom], startPoint: .top, endPoint: .bottom)
                     .opacity(1 - glass * 0.7)
                 RadialGradient(colors: [module.colors[0].opacity(0.30), .clear], center: .init(x: 0.85, y: 0.05),

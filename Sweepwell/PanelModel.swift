@@ -117,7 +117,7 @@ struct PanelAlert: Identifiable {
             switch self {
             case .quit: "Quit"
             case .expand: "Details"
-            case .open(let module, let scan): scan ? "Scan" : "Open \(module.title)"
+            case .open(_, let scan): scan ? "Scan" : "Show"
             }
         }
     }

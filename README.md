@@ -37,15 +37,27 @@ Clicking the broom in the menu bar opens a status panel:
 Nothing here needs a network connection, and nothing runs in the background while the panel
 and window are closed.
 
-The **Glass** slider (sidebar and Settings) runs from solid cards to Liquid Glass. It needs
-macOS 26 or later for real glass; older systems get a material-based approximation. The panel
-always stays frosted, because unblurred glass over other windows' text is unreadable.
+## Liquid Glass
+
+Sweepwell uses the macOS 26 design, so it requires **macOS 26 or later**:
+
+- The main window is a standard `NavigationSplitView`. Its sidebar floats as a pane of Liquid
+  Glass, and each section's colours extend underneath it (`backgroundExtensionEffect`).
+- The toolbar, buttons, scan orbs, banners and each section's floating bottom bar are glass.
+  Primary actions are glass tinted with the section's colour. A bar's parts share a
+  `GlassEffectContainer`, so they read as one piece of glass.
+- Content (cards, lists, the Space Lens map) stays on plain surfaces underneath, following
+  Apple's rule that glass is for navigation and controls, never glass on glass.
+- In the menu bar panel, the header buttons and chore keys are interactive glass. A chore's
+  confirmation row grows out of the keys as glass.
+- The **Glass** slider in the sidebar and in Settings sets how much of the blurred desktop
+  shows through the window and the panel, from Solid to Crystal.
 
 ## Always there
 
 Sweepwell opens at login (on by default once it lives in an Applications folder; toggle in
 Settings → Startup, or in System Settings → General → Login Items) and starts quietly in the
-menu bar. Closing the window leaves the ✦ menu bar icon running without a Dock icon; the power
+menu bar. Closing the window leaves the broom menu bar icon running without a Dock icon; the power
 button in the menu bar panel (or ⌘Q) stops it. `Sweepwell --login-item-status` prints what macOS has on file.
 
 ## Safety model
