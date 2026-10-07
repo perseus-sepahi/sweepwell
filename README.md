@@ -37,21 +37,26 @@ Clicking the broom in the menu bar opens a status panel:
 Nothing here needs a network connection, and nothing runs in the background while the panel
 and window are closed.
 
-## Liquid Glass
+## Liquid Glass, Control Center style
 
-Sweepwell uses the macOS 26 design, so it requires **macOS 26 or later**:
+Sweepwell uses the macOS 26 design, so it requires **macOS 26 or later**. Its look follows
+Control Center: everything is a separate piece of Liquid Glass, with space around it.
 
-- The main window is a standard `NavigationSplitView`. Its sidebar floats as a pane of Liquid
-  Glass, and each section's colours extend underneath it (`backgroundExtensionEffect`).
-- The toolbar, buttons, scan orbs, banners and each section's floating bottom bar are glass.
-  Primary actions are glass tinted with the section's colour. A bar's parts share a
-  `GlassEffectContainer`, so they read as one piece of glass.
-- Content (cards, lists, the Space Lens map) stays on plain surfaces underneath, following
-  Apple's rule that glass is for navigation and controls, never glass on glass.
-- In the menu bar panel, the header buttons and chore keys are interactive glass. A chore's
-  confirmation row grows out of the keys as glass.
-- The **Glass** slider in the sidebar and in Settings sets how much of the blurred desktop
-  shows through the window and the panel, from Solid to Crystal.
+- **Menu bar panel**: no container, just modules on a four-column grid. Capsules for disk,
+  memory, network and power; a large square for the processor; circles for chores (Keep
+  Awake, Eject All, Empty Trash, Smart Scan, Settings, Quit); full-width modules for the
+  status, the Glass dial and anything that opens up. Icons sit in white badges, and a chore
+  turns into a white circle while it is on. Opening a vital, or a chore's confirmation,
+  morphs a new module out of the grid.
+- **Main window**: a `NavigationSplitView` with the system's floating glass sidebar and a glass
+  toolbar. Every card is its own glass module with generous corners. Buttons inside a module
+  are plain capsules, so there is never glass on glass. Each section's floating bottom bar is
+  glass too.
+- The **Glass** slider in the sidebar, the panel and Settings sets how much tint sits inside
+  the glass, from Solid to Crystal.
+
+`scripts/ui/window.sh` and `scripts/ui/panel.sh` capture the window or the panel in a demo
+home folder for design checks. They capture only Sweepwell's own windows.
 
 ## Always there
 

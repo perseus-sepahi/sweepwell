@@ -191,10 +191,12 @@ private struct PillButtonBody: View {
             .padding(.horizontal, large ? 22 : 16)
             .padding(.vertical, large ? 10 : 7)
         Group {
-            if onGlass && !prominent {
+            if onGlass {
+                // Already on a glass module: a plain capsule, tinted solid when primary.
                 label
-                    .foregroundStyle(.primary)
-                    .background(hovering || configuration.isPressed ? Color.hoverFill : .clear, in: Capsule())
+                    .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                    .background(prominent ? AnyShapeStyle(tint) : AnyShapeStyle(hovering || configuration.isPressed ? Color.selectionFill : Color.quietButton),
+                                in: Capsule())
             } else {
                 label
                     .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
@@ -337,5 +339,28 @@ extension Date {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: self, relativeTo: .now)
+    }
+}
+
+/// The round badge at the front of a module: white with a coloured glyph when it stands for
+/// something live or on, dim glass otherwise, as in Control Center.
+struct IconDisc: View {
+    let symbol: String
+    var isAsset = false
+    let color: Color
+    var on = true
+    var size: CGFloat = 38
+
+    var body: some View {
+        Group {
+            if isAsset {
+                Image(symbol).resizable().renderingMode(.template).scaledToFit().frame(width: size * 0.48, height: size * 0.48)
+            } else {
+                Image(systemName: symbol).font(.system(size: size * 0.42, weight: .semibold))
+            }
+        }
+        .foregroundStyle(on ? color : Color.primary)
+        .frame(width: size, height: size)
+        .background(on ? AnyShapeStyle(.white) : AnyShapeStyle(Color.quietButton), in: Circle())
     }
 }

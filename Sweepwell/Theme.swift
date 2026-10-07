@@ -200,8 +200,9 @@ extension Glass {
     }
 }
 
-/// A content surface: a quiet fill that thins out as the Glass dial rises, so the window's
-/// translucency reaches the cards too, without making them glass.
+/// A module: one separate piece of Liquid Glass, as in Control Center. Every card in the app
+/// is one, with room around it, so the window reads as a set of distinct glass pieces rather
+/// than panels inside panels. The Glass dial lays a thin tint inside: more glass, less tint.
 struct ContentSurface<S: InsettableShape>: ViewModifier {
     @AppStorage(Preferences.glassKey) private var glass = Glassiness.default
     let shape: S
@@ -209,15 +210,18 @@ struct ContentSurface<S: InsettableShape>: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background((raised ? Color.surfaceRaised : Color.surface).opacity(1 - glass * 0.5), in: shape)
-            .overlay(shape.strokeBorder(Color.hairline))
-            .shadow(color: .cardShadow.opacity(1 - glass * 0.6), radius: raised ? 12 : 7, y: raised ? 5 : 2)
+            // Buttons inside a module draw as plain capsules, never as glass on glass.
+            .environment(\.onGlass, true)
+            .background((raised ? Color.surfaceRaised : Color.surface).opacity(max(0, 1 - glass * 1.25) * 0.8), in: shape)
+            .glassEffect(raised ? Glass.regular.tint(Color.selectionFill) : .regular, in: shape)
     }
 }
 
 extension View {
+    /// A glass module. Radii are scaled up to Control Center's generous, near-capsule corners.
     func card(cornerRadius: CGFloat = 18, highlighted: Bool = false) -> some View {
-        modifier(ContentSurface(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous), raised: highlighted))
+        modifier(ContentSurface(shape: RoundedRectangle(cornerRadius: min(32, cornerRadius * 1.6), style: .continuous),
+                                raised: highlighted))
     }
 
     /// Floating glass: banners, bars and other chrome that hovers over content.

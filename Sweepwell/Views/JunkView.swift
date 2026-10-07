@@ -81,7 +81,7 @@ struct JunkView: View {
                         }
                     }
                 }
-                .frame(width: 300)
+                .frame(width: 330)
 
                 VStack(alignment: .leading, spacing: 10) {
                     // A line limit rather than fixedSize: fixed text asks for its full height at
@@ -118,7 +118,7 @@ private struct GroupRow: View {
         HStack(spacing: 10) {
             CheckBox(state: state.selected == 0 ? .off : (state.selected == state.total ? .on : .mixed),
                      tint: Module.junk.accent) { model.setGroup(group, selected: state.selected != state.total) }
-            Image(systemName: group.kind.symbol).frame(width: 22).foregroundStyle(Module.junk.gradient)
+            IconDisc(symbol: group.kind.symbol, color: Module.junk.accent, size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text(group.kind.title).font(.callout.weight(.medium))
                 Text(group.items.count == 1 ? "1 item" : "\(group.items.count) items").font(.caption).foregroundStyle(.secondary)

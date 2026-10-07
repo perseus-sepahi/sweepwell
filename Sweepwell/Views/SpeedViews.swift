@@ -157,7 +157,7 @@ private struct TaskCard: View {
         let status = app.maintenance.status[task]
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: task.symbol).font(.title3).foregroundStyle(Module.maintenance.gradient).frame(width: 28)
+                IconDisc(symbol: task.symbol, color: Module.maintenance.colors[1], size: 32)
                 Text(task.title).font(.callout.weight(.semibold))
                 Spacer()
                 if task.requiresAdministrator {
