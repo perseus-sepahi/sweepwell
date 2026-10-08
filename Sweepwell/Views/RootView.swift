@@ -104,10 +104,10 @@ struct Sidebar: View {
                 }
                 DiskSummary()
                     .padding(12)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .glassEffect(.clear.interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 GlassSlider(compact: true)
                     .padding(12)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .glassEffect(.clear.interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 AppearanceSwitch()
             }
             .padding(.horizontal, 14)

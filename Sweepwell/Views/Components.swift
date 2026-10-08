@@ -11,7 +11,8 @@ struct ModuleScaffold<Content: View, Footer: View>: View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
                 IconDisc(symbol: module.symbol, color: module.colors[1], size: 48)
-                    .glassEffect(.regular, in: .circle)
+                    .padding(4)
+                    .glassEffect(.clear.interactive(), in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(module.title).font(.system(size: 24, weight: .bold, design: .rounded))
                     Text(module.tagline).font(.callout).foregroundStyle(.secondary)

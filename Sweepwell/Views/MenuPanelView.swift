@@ -383,7 +383,8 @@ private struct GlassModule<S: Shape>: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(Color.panelSolid.opacity(max(0, 1 - dial * 1.25) * 0.7), in: shape)
-            .glassEffect(Glass.regular.tint(tint).interactive(interactive), in: shape)
+            .background(Color.glassDim, in: shape)
+            .glassEffect(Glassiness.material(dial).tint(tint).interactive(interactive), in: shape)
     }
 }
 

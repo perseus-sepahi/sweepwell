@@ -67,6 +67,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if hooks["SWEEPWELL_OPEN_PANEL"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
                 self.statusPanel?.show()
+                if hooks["SWEEPWELL_PANEL_BACKDROP"] == "1", let frame = self.statusPanel?.panelFrame {
+                    // Behind the panel's own frame, with room to spare on every side.
+                    Self.showTestBackdrop(covering: frame.insetBy(dx: -40, dy: -40))
+                }
                 AppModel.shared.expandedVital = hooks["SWEEPWELL_PANEL_EXPAND"].flatMap(Vital.init(rawValue:))
             }
         }
@@ -104,6 +108,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let event = NSAppleEventManager.shared().currentAppleEvent
         return event?.eventID == kAEOpenApplication
             && event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+    }
+
+    /// UI check only: a colourful wallpaper-like window under the panel, so captures show the
+    /// glass bending something without photographing anything else on screen.
+    private static var testBackdrop: NSWindow?
+    private static func showTestBackdrop(covering frame: NSRect) {
+        let window = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.level = .statusBar   // above ordinary windows, below the panel
+        window.ignoresMouseEvents = true
+        let host = NSHostingView(rootView: ZStack {
+            LinearGradient(colors: [Color(hex: 0x2E7D32), Color(hex: 0x9CCC65), Color(hex: 0x1565C0)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            ForEach(0..<6, id: \.self) { i in
+                Circle().fill([Color.orange, .pink, .yellow, .cyan, .purple, .white][i].opacity(0.7))
+                    .frame(width: 160, height: 160)
+                    .offset(x: CGFloat(i % 3) * 140 - 140, y: CGFloat(i / 3) * 360 - 180)
+            }
+        }
+        .frame(width: frame.width, height: frame.height))
+        // Keep the window exactly the size asked for, so it covers everything behind the panel.
+        host.sizingOptions = []
+        host.frame = NSRect(origin: .zero, size: frame.size)
+        window.contentView = host
+        window.setFrame(frame, display: true)
+        window.orderFrontRegardless()
+        testBackdrop = window
     }
 
     /// Brings the main window back from menu-bar-only mode.
@@ -181,6 +211,8 @@ final class StatusPanelController: NSObject {
     /// A click on the icon while the panel is open reaches us twice: first the panel loses
     /// focus and closes itself, then the button's action fires. Without this check the second
     /// half would see a closed panel and open it again, so the icon could never dismiss it.
+    var panelFrame: NSRect { panel.frame }
+
     @objc private func toggle() {
         if panel.isVisible {
             close()

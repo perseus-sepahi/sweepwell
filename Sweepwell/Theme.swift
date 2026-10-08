@@ -77,6 +77,9 @@ extension Color {
 
     // Menu bar panel: a tinted solid that the glass dial fades away, and the tiles on top.
     static let panelSolid = Color(day: 0xF4F6FC, night: 0x15172B)
+    /// The thin dimming layer Apple puts under clear glass so text stays readable over
+    /// whatever the glass is bending.
+    static let glassDim = Color(day: 0xFFFFFF, night: 0x000000, dayAlpha: 0.14, nightAlpha: 0.18)
     static let panelTile = Color(day: 0xFFFFFF, night: 0xFFFFFF, dayAlpha: 0.55, nightAlpha: 0.07)
     static let panelTileHover = Color(day: 0xFFFFFF, night: 0xFFFFFF, dayAlpha: 0.85, nightAlpha: 0.14)
 
@@ -182,6 +185,12 @@ enum Module: String, CaseIterable, Identifiable {
 enum Glassiness {
     static let `default` = 0.55
 
+    /// Clear Liquid Glass (the see-through, light-bending kind) from Frosted upwards; the
+    /// frosted `regular` variant only for the most solid settings.
+    static func material(_ value: Double) -> Glass {
+        value >= 0.3 ? .clear : .regular
+    }
+
     static func label(_ value: Double) -> String {
         switch value {
         case ..<0.05: "Solid"
@@ -213,7 +222,8 @@ struct ContentSurface<S: InsettableShape>: ViewModifier {
             // Buttons inside a module draw as plain capsules, never as glass on glass.
             .environment(\.onGlass, true)
             .background((raised ? Color.surfaceRaised : Color.surface).opacity(max(0, 1 - glass * 1.25) * 0.8), in: shape)
-            .glassEffect(raised ? Glass.regular.tint(Color.selectionFill) : .regular, in: shape)
+            .background(Color.glassDim, in: shape)
+            .glassEffect(Glassiness.material(glass).tint(raised ? Color.selectionFill : nil).interactive(), in: shape)
     }
 }
 
@@ -267,10 +277,18 @@ struct AuroraBackground: View {
                 // RootView); the more glass, the more of it shows through this tint.
                 LinearGradient(colors: [.canvasTop, .canvasBottom], startPoint: .top, endPoint: .bottom)
                     .opacity(1 - glass * 0.7)
-                RadialGradient(colors: [module.colors[0].opacity(0.30), .clear], center: .init(x: 0.85, y: 0.05),
-                               startRadius: 0, endRadius: reach * 0.6)
-                RadialGradient(colors: [module.colors[1].opacity(0.22), .clear], center: .init(x: 0.1, y: 1.0),
+                // Colour for the glass to bend: Liquid Glass shows itself by refracting what is
+                // behind it, and a flat backdrop gives it nothing to refract. Static on purpose.
+                RadialGradient(colors: [module.colors[0].opacity(0.55), .clear], center: .init(x: 0.88, y: 0.02),
                                startRadius: 0, endRadius: reach * 0.55)
+                RadialGradient(colors: [module.colors[1].opacity(0.45), .clear], center: .init(x: 0.08, y: 0.95),
+                               startRadius: 0, endRadius: reach * 0.55)
+                RadialGradient(colors: [module.colors[1].opacity(0.35), .clear], center: .init(x: 0.45, y: 0.35),
+                               startRadius: 0, endRadius: reach * 0.32)
+                RadialGradient(colors: [module.colors[0].opacity(0.30), .clear], center: .init(x: 0.95, y: 0.85),
+                               startRadius: 0, endRadius: reach * 0.35)
+                LinearGradient(colors: [.white.opacity(0), .white.opacity(0.06), .white.opacity(0)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
             }
         }
         .allowsHitTesting(false)
