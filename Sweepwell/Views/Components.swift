@@ -10,12 +10,8 @@ struct ModuleScaffold<Content: View, Footer: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
-                Image(systemName: module.symbol)
-                    .font(.system(size: 21, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 46, height: 46)
-                    .background(module.gradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                IconDisc(symbol: module.symbol, color: module.colors[1], size: 48)
+                    .glassEffect(.regular, in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(module.title).font(.system(size: 24, weight: .bold, design: .rounded))
                     Text(module.tagline).font(.callout).foregroundStyle(.secondary)

@@ -103,7 +103,11 @@ struct Sidebar: View {
                         .help(model.environment.home.path)
                 }
                 DiskSummary()
+                    .padding(12)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 GlassSlider(compact: true)
+                    .padding(12)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 AppearanceSwitch()
             }
             .padding(.horizontal, 14)
@@ -134,8 +138,11 @@ private struct DiskSummary: View {
 
     var body: some View {
         let snapshot = model.snapshot
-        VStack(alignment: .leading, spacing: 5) {
-            Label("Macintosh HD", systemImage: "internaldrive").font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                IconDisc(symbol: "internaldrive.fill", color: Module.spaceLens.colors[1], size: 26)
+                Text("Macintosh HD").font(.caption.weight(.semibold))
+            }
             ProgressView(value: snapshot.diskFraction).tint(snapshot.diskFraction > 0.9 ? Color.danger : Module.spaceLens.accent)
             Text("\(Format.bytes(snapshot.diskAvailable)) free of \(Format.bytes(snapshot.diskTotal))")
                 .font(.caption2).foregroundStyle(.secondary)
@@ -147,7 +154,7 @@ private struct DiskSummary: View {
 struct AccessBanner: View {
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "lock.shield.fill").font(.title3).foregroundStyle(Color.warning)
+            IconDisc(symbol: "lock.shield.fill", color: Color.warning, size: 38)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Sweepwell can only see part of your disk").font(.callout.weight(.semibold))
                 Text("Grant Full Disk Access to include the Trash, Mail downloads, Safari caches and protected app data in scans.")
@@ -157,8 +164,8 @@ struct AccessBanner: View {
             Button("Open Privacy Settings") { NSWorkspace.shared.open(FullDiskAccess.settingsURL) }
                 .buttonStyle(PillButtonStyle(prominent: true, tint: .warning))
         }
-        .padding(.horizontal, 18).padding(.vertical, 12)
-        .floatingGlass(RoundedRectangle(cornerRadius: 20, style: .continuous), tint: Color.warning.opacity(0.18))
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .floatingGlass(Capsule(), tint: Color.warning.opacity(0.18))
         .padding(.horizontal, 20)
         .padding(.top, 6)
     }

@@ -220,7 +220,7 @@ struct ContentSurface<S: InsettableShape>: ViewModifier {
 extension View {
     /// A glass module. Radii are scaled up to Control Center's generous, near-capsule corners.
     func card(cornerRadius: CGFloat = 18, highlighted: Bool = false) -> some View {
-        modifier(ContentSurface(shape: RoundedRectangle(cornerRadius: min(32, cornerRadius * 1.6), style: .continuous),
+        modifier(ContentSurface(shape: RoundedRectangle(cornerRadius: min(34, cornerRadius * 2), style: .continuous),
                                 raised: highlighted))
     }
 

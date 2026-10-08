@@ -82,6 +82,8 @@ struct OverviewView: View {
     }
 }
 
+/// One reading, as a square glass module like the menu bar panel's processor square: white
+/// badge and gauge ring on top, the number large, then what it is and a line of context.
 private struct GaugeTile: View {
     let title: String
     let value: Double?
@@ -91,31 +93,32 @@ private struct GaugeTile: View {
     var centerText: String?
 
     var body: some View {
-        VStack(spacing: 10) {
-            ZStack {
-                Circle().stroke(Color.track, lineWidth: 8)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top) {
+                IconDisc(symbol: symbol, color: colors[1], size: 36)
+                Spacer()
                 if let value {
-                    Circle().trim(from: 0, to: max(0.002, min(1, value)))
-                        // Linear, not angular: CoreGraphics shades conic gradients on the CPU with an
-                        // atan2 per pixel, and this ring is redrawn on every sample, even while
-                        // the window is closed. On a thin ring the two look almost the same.
-                        .stroke(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing),
-                                style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                }
-                VStack(spacing: 1) {
-                    Text(centerText ?? "\(Int(((value ?? 0) * 100).rounded()))%")
-                        .font(.system(size: centerText == nil ? 21 : 15, weight: .bold, design: .rounded)).monospacedDigit()
-                    Image(systemName: symbol).font(.caption).foregroundStyle(.secondary)
+                    ZStack {
+                        Circle().stroke(Color.track, lineWidth: 6)
+                        Circle().trim(from: 0, to: max(0.002, min(1, value)))
+                            // Linear, not angular: CoreGraphics shades conic gradients on the CPU
+                            // with an atan2 per pixel, and this ring is redrawn on every sample.
+                            .stroke(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing),
+                                    style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                    .frame(width: 46, height: 46)
                 }
             }
-            .frame(width: 92, height: 92)
-            Text(title).font(.callout.weight(.semibold))
+            Spacer(minLength: 10)
+            Text(centerText ?? "\(Int(((value ?? 0) * 100).rounded()))%")
+                .font(.system(size: centerText == nil ? 32 : 24, weight: .bold, design: .rounded)).monospacedDigit()
+            Text(title).font(.system(size: 14, weight: .semibold))
             Text(caption).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .card()
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+        .card(cornerRadius: 17)
     }
 }
 
@@ -130,7 +133,7 @@ private struct ResultTile: View {
         Button { model.selection = module } label: {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Image(systemName: module.symbol).foregroundStyle(module.gradient).font(.title3)
+                    IconDisc(symbol: module.symbol, color: module.colors[1], size: 32)
                     Text(module.title).font(.callout.weight(.semibold))
                     Spacer()
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
