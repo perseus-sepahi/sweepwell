@@ -12,7 +12,7 @@ struct ModuleScaffold<Content: View, Footer: View>: View {
             HStack(alignment: .center, spacing: 14) {
                 IconDisc(symbol: module.symbol, color: module.colors[1], size: 48)
                     .padding(4)
-                    .glassEffect(.clear.interactive(), in: .circle)
+                    .panelGlass(Circle(), interactive: true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(module.title).font(.system(size: 24, weight: .bold, design: .rounded))
                     Text(module.tagline).font(.callout).foregroundStyle(.secondary)
@@ -167,9 +167,12 @@ struct PillButtonStyle: ButtonStyle {
     var prominent = false
     var tint: Color = .accentColor
     var large = false
+    /// Text on a prominent button. White by default; dark on light fills such as yellow,
+    /// where white cannot be read.
+    var labelColor: Color = .white
 
     func makeBody(configuration: Configuration) -> some View {
-        PillButtonBody(configuration: configuration, prominent: prominent, tint: tint, large: large)
+        PillButtonBody(configuration: configuration, prominent: prominent, tint: tint, large: large, labelColor: labelColor)
     }
 }
 
@@ -178,6 +181,7 @@ private struct PillButtonBody: View {
     let prominent: Bool
     let tint: Color
     let large: Bool
+    let labelColor: Color
     @Environment(\.isEnabled) private var enabled
     @Environment(\.onGlass) private var onGlass
     @State private var hovering = false
@@ -191,12 +195,12 @@ private struct PillButtonBody: View {
             if onGlass {
                 // Already on a glass module: a plain capsule, tinted solid when primary.
                 label
-                    .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                    .foregroundStyle(prominent ? AnyShapeStyle(labelColor) : AnyShapeStyle(.primary))
                     .background(prominent ? AnyShapeStyle(tint) : AnyShapeStyle(hovering || configuration.isPressed ? Color.selectionFill : Color.quietButton),
                                 in: Capsule())
             } else {
                 label
-                    .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                    .foregroundStyle(prominent ? AnyShapeStyle(labelColor) : AnyShapeStyle(.primary))
                     .glassEffect(.control(tint: prominent ? tint : nil), in: .capsule)
             }
         }

@@ -104,10 +104,10 @@ struct Sidebar: View {
                 }
                 DiskSummary()
                     .padding(12)
-                    .glassEffect(.clear.interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .panelGlass(RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: true)
                 GlassSlider(compact: true)
                     .padding(12)
-                    .glassEffect(.clear.interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .panelGlass(RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: true)
                 AppearanceSwitch()
             }
             .padding(.horizontal, 14)
@@ -162,10 +162,10 @@ struct AccessBanner: View {
             }
             Spacer()
             Button("Open Privacy Settings") { NSWorkspace.shared.open(FullDiskAccess.settingsURL) }
-                .buttonStyle(PillButtonStyle(prominent: true, tint: .warning))
+                .buttonStyle(PillButtonStyle(prominent: true, tint: .warning, labelColor: .black))
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
-        .floatingGlass(Capsule(), tint: Color.warning.opacity(0.18))
+        .panelGlass(Capsule(), tint: Color.warning.opacity(0.12))
         .padding(.horizontal, 20)
         .padding(.top, 6)
     }
