@@ -52,6 +52,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// appearance so AppKit-side code (the status panel) can open windows too.
     static var openMainWindow: (() -> Void)?
     static var openSettingsWindow: (() -> Void)?
+    /// The same actions from the menu bar panel, which exists even when the main window was
+    /// never built.
+    static var panelOpenMainWindow: (() -> Void)?
+    static var panelOpenSettings: (() -> Void)?
     private var statusPanel: StatusPanelController?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -72,6 +76,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Self.showTestBackdrop(covering: frame.insetBy(dx: -40, dy: -40))
                 }
                 AppModel.shared.expandedVital = hooks["SWEEPWELL_PANEL_EXPAND"].flatMap(Vital.init(rawValue:))
+            }
+        }
+        if let action = hooks["SWEEPWELL_TEST_PANEL_ACTION"] {
+            // UI check: press the panel's Open Sweepwell / Settings button, the same code path.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
+                self.statusPanel?.close()
+                if action == "settings" { Self.showSettings() } else { Self.showMainWindow() }
             }
         }
         if hooks["SWEEPWELL_TEST_REOPEN"] == "1" {
@@ -136,22 +147,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         testBackdrop = window
     }
 
-    /// Brings the main window back from menu-bar-only mode.
+    /// Brings the main window back from menu-bar-only mode, whether or not it was ever built.
     static func showMainWindow() {
         NSApp.setActivationPolicy(.regular)
-        if let existing = contentWindows.first(where: { $0.identifier?.rawValue.hasPrefix("main") ?? false }) {
+        if let existing = mainWindow {
             existing.makeKeyAndOrderFront(nil)
         } else {
-            openMainWindow?()
+            (openMainWindow ?? panelOpenMainWindow)?()
         }
-        NSApp.activate(ignoringOtherApps: true)
+        bringToFront()
+        // If a route quietly failed, try the others once the run loop has had a turn.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            guard !(mainWindow?.isVisible ?? false) else { return }
+            (panelOpenMainWindow ?? openMainWindow)?()
+            mainWindow?.makeKeyAndOrderFront(nil)
+            bringToFront()
+        }
     }
 
     static func showSettings() {
         NSApp.setActivationPolicy(.regular)
-        openSettingsWindow?()
+        if let open = openSettingsWindow ?? panelOpenSettings {
+            open()
+        } else {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+        bringToFront()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            guard !NSApp.windows.contains(where: { $0.isVisible && $0.identifier?.rawValue.contains("Settings") == true }) else { return }
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            bringToFront()
+        }
+    }
+
+    /// Clicks in the menu bar panel do not activate Sweepwell (the panel is non-activating), so
+    /// the newer cooperative `activate()` can be refused and the window opens behind other apps.
+    /// Opening a window from the panel is an explicit request, so take the front.
+    private static func bringToFront() {
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    private static var mainWindow: NSWindow? {
+        contentWindows.first { $0.identifier?.rawValue.hasPrefix("main") ?? false }
+    }
+
 }
 
 // MARK: - Status item and panel

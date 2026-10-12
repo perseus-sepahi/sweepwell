@@ -8,6 +8,8 @@ import SweepwellKit
 /// the status, the glass dial and anything that opens up.
 struct MenuPanelView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     /// Closes the panel; every action that leaves for a window calls it first.
     var dismiss: () -> Void = {}
     /// The content changed size; the hosting panel resizes itself to match.
@@ -62,7 +64,7 @@ struct MenuPanelView: View {
                     }
                 }
                 HStack(spacing: PanelGrid.gap) {
-                    CircleModule(symbol: "gearshape.fill", help: "Settings", caption: "Settings") { dismiss(); AppDelegate.showSettings() }
+                    CircleModule(symbol: "gearshape.fill", help: "Settings", caption: "Settings") { registerOpeners(); dismiss(); AppDelegate.showSettings() }
                     CircleModule(symbol: "power", help: "Quit Sweepwell", caption: "Quit") { NSApp.terminate(nil) }
                     ledgerModule
                 }
@@ -75,6 +77,7 @@ struct MenuPanelView: View {
         .onGeometryChange(for: CGSize.self) { $0.size } action: { sizeChanged($0) }
         .onChange(of: app.panelVisible) { _, visible in
             if !visible { tray = nil; return }
+            registerOpeners()
             // UI check: open a chore's row as the panel appears.
             switch ProcessInfo.processInfo.environment["SWEEPWELL_PANEL_TRAY"] {
             case "trash": tray = .trash
@@ -349,8 +352,16 @@ struct MenuPanelView: View {
 
     // MARK: Helpers
 
+    /// The panel always exists, unlike the main window (which macOS may never build when it
+    /// starts Sweepwell at login), so its own window actions are the reliable ones.
+    private func registerOpeners() {
+        AppDelegate.panelOpenMainWindow = { openWindow(id: "main") }
+        AppDelegate.panelOpenSettings = { openSettings() }
+    }
+
     private func show(_ module: Module, scan: Bool) {
         app.selection = module
+        registerOpeners()
         dismiss()
         AppDelegate.showMainWindow()
         if scan { app.startScan(for: module) }

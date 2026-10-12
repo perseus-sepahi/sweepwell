@@ -33,7 +33,9 @@ struct SweepwellApp: App {
         // restored it as closed, SwiftUI would never build it, and the menu bar panel would have
         // no way to open it again.
         .restorationBehavior(.disabled)
-        .defaultLaunchBehavior(.presented)
+        // UI check: SWEEPWELL_TEST_NO_WINDOW=1 starts with the window never built, as can happen
+        // when macOS starts Sweepwell at login.
+        .defaultLaunchBehavior(ProcessInfo.processInfo.environment["SWEEPWELL_TEST_NO_WINDOW"] == "1" ? .suppressed : .presented)
         .defaultSize(width: 1140, height: 740)
         .commands {
             CommandGroup(replacing: .newItem) {}
