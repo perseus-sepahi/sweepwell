@@ -229,4 +229,25 @@ final class ModuleTests: XCTestCase {
         try volume.eject()
         XCTAssertFalse(FileManager.default.fileExists(atPath: volume.url.path), "unmounted")
     }
+
+    func testMemoryBreakdownIsPlausible() throws {
+        let memory = try XCTUnwrap(MemoryBreakdown.current())
+        let total = Int64(ProcessInfo.processInfo.physicalMemory)
+        print("RAM: \(Format.bytes(memory.free)) free, \(Format.bytes(memory.cachedFiles)) cached files, \(Format.bytes(memory.inactive)) inactive")
+        XCTAssertGreaterThan(memory.free, 0)
+        XCTAssertLessThan(memory.free + memory.cachedFiles, total)
+        XCTAssertLessThan(memory.inactive, total)
+    }
+
+    func testJunkScanCanBeLimitedToAppCaches() throws {
+        let fixture = try Fixture()
+        try fixture.file("Library/Caches/com.vendor.editor/data", bytes: 50_000)
+        try fixture.file("Library/Caches/com.vendor.running/data", bytes: 20_000)
+        try fixture.file("Library/Logs/app.log", bytes: 8_000)
+        try fixture.file(".Trash/old.zip", bytes: 12_000)
+        let groups = JunkScanner(environment: fixture.environment, runningBundleIDs: ["com.vendor.running"]).scan(kinds: [.userCaches])
+        XCTAssertEqual(groups.map(\.kind), [.userCaches])
+        XCTAssertEqual(groups.first?.items.filter(\.selectedByDefault).map(\.name), ["com.vendor.editor"],
+                       "a running app's cache is listed but not chosen")
+    }
 }

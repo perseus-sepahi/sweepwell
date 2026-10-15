@@ -72,6 +72,11 @@ public enum MaintenanceTask: String, CaseIterable, Identifiable, Sendable {
 public struct MaintenanceOutcome: Sendable {
     public let succeeded: Bool
     public let message: String
+
+    public init(succeeded: Bool, message: String) {
+        self.succeeded = succeeded
+        self.message = message
+    }
 }
 
 public enum MaintenanceRunner {

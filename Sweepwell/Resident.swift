@@ -85,6 +85,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if action == "settings" { Self.showSettings() } else { Self.showMainWindow() }
             }
         }
+        if let action = hooks["SWEEPWELL_TEST_MEMORY_ACTION"] {
+            // UI check: press Free Up RAM / Clear App Caches (and confirm) in the Memory module.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                if action == "ram" { AppModel.shared.freeUpRAM() } else { AppModel.shared.findAppCaches() }
+            }
+            if action == "caches-confirm" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 9) { AppModel.shared.clearAppCaches() }
+            }
+        }
         if hooks["SWEEPWELL_TEST_REOPEN"] == "1" {
             // UI check: the window was closed at launch; prove it can come back.
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Self.showMainWindow() }
@@ -273,7 +282,8 @@ final class StatusPanelController: NSObject {
         AppModel.shared.refreshTrash()
         Task { await AppModel.shared.sampleNow() }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            Task { @MainActor in self?.close() }
+            // Not while macOS's password prompt for freeing RAM is up: clicks there count as outside.
+            Task { @MainActor in if !AppModel.shared.panelBusy { self?.close() } }
         }
     }
 
@@ -291,13 +301,14 @@ final class StatusPanelController: NSObject {
         AppModel.shared.panelVisible = false
         AppModel.shared.expandedVital = nil
         AppModel.shared.panelMessage = nil
+        if !AppModel.shared.panelBusy { AppModel.shared.memoryTask = MemoryTask() }
         panel.orderOut(nil)
         if let monitor = outsideClickMonitor { NSEvent.removeMonitor(monitor) }
         outsideClickMonitor = nil
     }
 
     @objc private func panelResignedKey() {
-        if ProcessInfo.processInfo.environment["SWEEPWELL_OPEN_PANEL"] != "1" { close() }
+        if ProcessInfo.processInfo.environment["SWEEPWELL_OPEN_PANEL"] != "1", !AppModel.shared.panelBusy { close() }
     }
 }
 

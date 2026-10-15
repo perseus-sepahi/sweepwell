@@ -266,3 +266,81 @@ extension AppModel {
         }
     }
 }
+
+// MARK: - Memory actions
+
+struct MemoryTask {
+    enum Phase: Equatable { case idle, freeingRAM, findingCaches, confirmCaches, clearingCaches }
+    var phase: Phase = .idle
+    /// App caches found and chosen for clearing (running apps are left out).
+    var caches: [JunkItem] = []
+    var cachesSize: Int64 { caches.reduce(0) { $0 + $1.size } }
+    var result: String?
+}
+
+extension AppModel {
+    /// Runs macOS's own `purge`, which drops cached files and inactive memory from RAM. It needs
+    /// an administrator password, which macOS asks for itself.
+    func freeUpRAM() {
+        guard memoryTask.phase == .idle || memoryTask.phase == .confirmCaches else { return }
+        memoryTask = MemoryTask(phase: .freeingRAM)
+        panelBusy = true
+        let fake = ProcessInfo.processInfo.environment["SWEEPWELL_FAKE_PURGE"] == "1"
+        Task {
+            let before = MemoryBreakdown.current()
+            let outcome = await background { () -> MaintenanceOutcome in
+                // UI check: SWEEPWELL_FAKE_PURGE=1 skips the password prompt and the real purge.
+                fake ? MaintenanceOutcome(succeeded: true, message: "Done") : MaintenanceRunner.run(.freeMemory)
+            }
+            // Give the kernel a moment to hand the pages back before measuring.
+            try? await Task.sleep(for: .seconds(1))
+            let after = MemoryBreakdown.current()
+            panelBusy = false
+            if outcome.succeeded, let before, let after {
+                let gained = max(0, after.free - before.free)
+                memoryTask = MemoryTask(result: gained >= 50 << 20
+                    ? "Freed \(Format.bytes(gained)) of RAM. \(Format.bytes(after.free)) is free now."
+                    : "RAM was already lean; \(Format.bytes(after.free)) is free now.")
+            } else {
+                memoryTask = MemoryTask(result: outcome.message == "Cancelled" ? "Cancelled." : "Could not free RAM: \(outcome.message)")
+            }
+            await sampleNow()
+        }
+    }
+
+    /// Finds app caches worth clearing, then waits for a confirmation.
+    func findAppCaches() {
+        guard memoryTask.phase == .idle else { return }
+        memoryTask = MemoryTask(phase: .findingCaches)
+        let scanner = JunkScanner(environment: environment, runningBundleIDs: runningBundleIDs())
+        Task {
+            let groups = await background { scanner.scan(kinds: [.userCaches]) }
+            let chosen = groups.first?.items.filter(\.selectedByDefault) ?? []
+            memoryTask = chosen.isEmpty
+                ? MemoryTask(result: "No app caches worth clearing right now.")
+                : MemoryTask(phase: .confirmCaches, caches: chosen)
+        }
+    }
+
+    /// Clears the confirmed caches, through the same safety checks as System Junk.
+    func clearAppCaches() {
+        guard memoryTask.phase == .confirmCaches else { return }
+        let items = memoryTask.caches
+        memoryTask.phase = .clearingCaches
+        let mode = Preferences.removalMode
+        let remover = Remover(environment: environment)
+        let requests = items.map { RemovalRequest(url: $0.url, size: $0.size, purpose: .junk) }
+        Task {
+            let report = await background { remover.remove(requests, mode: mode) }
+            recordSweep(report)
+            var text = mode == .trash
+                ? "Moved \(Format.bytes(report.bytesFreed)) of app caches to the Trash."
+                : "Cleared \(Format.bytes(report.bytesFreed)) of app caches."
+            if !report.failures.isEmpty { text += " \(report.failures.count) could not be cleared." }
+            memoryTask = MemoryTask(result: text)
+            if junk.phase == .results { junk.scan() }   // keep System Junk's numbers honest
+        }
+    }
+
+    func cancelMemoryTask() { memoryTask = MemoryTask() }
+}

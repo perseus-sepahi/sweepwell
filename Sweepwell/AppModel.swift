@@ -53,6 +53,11 @@ final class AppModel {
     /// Bumped when Keep Awake starts or stops, since KeepAwake itself is not observable.
     var keepAwakeRevision = 0
     var trash = TrashStatus()
+    /// The Memory module's two actions: freeing RAM and clearing app caches.
+    var memoryTask = MemoryTask()
+    /// True while something the panel started needs it to stay open, such as the password
+    /// prompt macOS shows for freeing RAM.
+    var panelBusy = false
     var ledger = SweepLedger.load()
 
     let junk: JunkModel

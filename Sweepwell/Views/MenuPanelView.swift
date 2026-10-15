@@ -574,6 +574,7 @@ private struct VitalDetail: View {
             .font(.caption)
 
             if vital == .disk, !app.volumes.isEmpty { volumes }
+            if vital == .memory { MemoryActions() }
 
             Text(vital.rankingLabel.uppercased()).font(.system(size: 9, weight: .semibold)).kerning(0.6).foregroundStyle(.tertiary)
             let rows = vital.top(app.appUsage, limit: 4)
@@ -633,6 +634,10 @@ private struct VitalDetail: View {
         case .memory:
             var rows = [("In use", "\(Format.bytes(s.memoryUsed)) of \(Format.bytes(s.memoryTotal))"),
                         ("Compressed", Format.bytes(s.memoryCompressed))]
+            if let memory = MemoryBreakdown.current() {
+                rows.append(("Free", Format.bytes(memory.free)))
+                rows.append(("Cached files", Format.bytes(memory.cachedFiles)))
+            }
             if let swap = s.swap { rows.append(("Swap", "\(Format.bytes(swap.used)) of \(Format.bytes(swap.total))")) }
             return rows
         case .disk:
@@ -786,5 +791,70 @@ private struct Sparkline: View {
                                                      startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
             context.stroke(line, with: .color(color), style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
         }
+    }
+}
+
+/// Free Up RAM and Clear App Caches, inside the Memory module.
+private struct MemoryActions: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        let task = app.memoryTask
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                action("Free Up RAM", symbol: "memorychip", busy: task.phase == .freeingRAM,
+                       help: "Drops cached files and inactive memory from RAM with macOS's purge. Asks for your password.") {
+                    app.freeUpRAM()
+                }
+                action("Clear App Caches", symbol: "shippingbox",
+                       busy: task.phase == .findingCaches || task.phase == .clearingCaches,
+                       help: "Clears the cache folders apps keep in your Library. Running apps are skipped. Frees disk space.") {
+                    app.findAppCaches()
+                }
+            }
+            .disabled(task.phase != .idle && task.phase != .confirmCaches)
+
+            if task.phase == .confirmCaches {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Clear \(Format.bytes(task.cachesSize)) from \(task.caches.count) app\(task.caches.count == 1 ? "" : "s")?")
+                            .font(.caption.weight(.semibold))
+                        Text(Preferences.removalMode == .trash ? "Moved to the Trash. Running apps are skipped."
+                                                               : "Deleted for good. Running apps are skipped.")
+                            .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer(minLength: 4)
+                    small("Cancel") { app.cancelMemoryTask() }
+                    small("Clear", prominent: true) { app.clearAppCaches() }
+                }
+            }
+            if let result = task.result {
+                Label(result, systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func action(_ title: String, symbol: String, busy: Bool, help: String, run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            HStack(spacing: 6) {
+                if busy { ProgressView().controlSize(.mini) } else { Image(systemName: symbol) }
+                Text(title).lineLimit(1)
+            }
+            .font(.caption.weight(.semibold))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(Color.quietButton, in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain).focusable(false).help(help)
+    }
+
+    private func small(_ title: String, prominent: Bool = false, run: @escaping () -> Void) -> some View {
+        Button(title, action: run)
+            .buttonStyle(.plain).focusable(false)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .background(prominent ? AnyShapeStyle(Module.largeFiles.colors[1]) : AnyShapeStyle(Color.quietButton), in: Capsule())
     }
 }

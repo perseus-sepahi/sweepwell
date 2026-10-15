@@ -232,3 +232,31 @@ extension ExternalVolume {
     }
 }
 
+
+// MARK: - Memory breakdown
+
+/// Where RAM is going right now, in the terms `purge` works with.
+public struct MemoryBreakdown: Sendable, Equatable {
+    /// Not in use at all.
+    public let free: Int64
+    /// Holding copies of files read earlier (file-backed pages). macOS keeps these to make the
+    /// next read fast and gives them up on demand; `purge` drops them at once.
+    public let cachedFiles: Int64
+    /// Used recently, but not right now; the first to go when RAM is needed.
+    public let inactive: Int64
+
+    public static func current() -> MemoryBreakdown? {
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &stats) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return nil }
+        let page = Int64(vm_kernel_page_size)
+        return MemoryBreakdown(free: Int64(stats.free_count + stats.speculative_count) * page,
+                               cachedFiles: Int64(stats.external_page_count) * page,
+                               inactive: Int64(stats.inactive_count) * page)
+    }
+}
