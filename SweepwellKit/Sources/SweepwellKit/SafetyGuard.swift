@@ -14,6 +14,8 @@ public enum RemovalPurpose: Sendable {
     case appLeftover
     /// A per-user launch agent plist.
     case launchAgent
+    /// A folder the storage audit found and the user picked (always moved to the Trash).
+    case auditItem
 }
 
 public struct SafetyViolation: Error, LocalizedError, Sendable {
@@ -39,6 +41,12 @@ public struct SafetyGuard: Sendable {
     private static let protectedLibraryFolders: Set<String> = [
         "Keychains", "Mobile Documents", "Mail", "Messages", "Calendars", "Accounts", "Photos",
         "CloudStorage", "Passes", "Safari", "IdentityServices", "Biome"
+    ]
+
+    /// Top-level home entries an audit removal must never touch.
+    private static let auditDenied: Set<String> = [
+        ".Trash", ".ssh", ".gnupg", ".config", ".aws", ".kube", ".docker", ".netrc", ".password-store",
+        "Applications", ".zshrc", ".zprofile", ".bashrc", ".bash_profile", ".profile", ".gitconfig"
     ]
 
     static let leftoverLocations: Set<String> = [
@@ -102,6 +110,18 @@ public struct SafetyGuard: Sendable {
             guard parts.count == 3, first == "Library", parts[1] == "LaunchAgents",
                   parts[2].hasSuffix(".plist") else {
                 throw refuse("it is not a plist in ~/Library/LaunchAgents")
+            }
+
+        case .auditItem:
+            // Hidden tool folders, caches, VMs and SDKs: anywhere in the home folder except the
+            // places that hold personal data or credentials.
+            if Self.personalFolders.contains(first) || ["Desktop", "Downloads"].contains(first) {
+                throw refuse("~/\(first) holds your own files")
+            }
+            if Self.auditDenied.contains(first) { throw refuse("~/\(first) holds credentials or system state") }
+            if first == "Library" {
+                guard parts.count >= 3 else { throw refuse("it is a top-level Library folder") }
+                if Self.protectedLibraryFolders.contains(parts[1]) { throw refuse("~/Library/\(parts[1]) holds personal data") }
             }
 
         case .application:

@@ -67,6 +67,7 @@ final class AppModel {
     let uninstaller: UninstallerModel
     let startup: StartupModel
     let maintenance = MaintenanceModel()
+    let audit = StorageAuditModel()
 
     private let sampler = SystemSampler()
     private var monitor: Task<Void, Never>?
@@ -140,6 +141,10 @@ final class AppModel {
                 case .duplicates where duplicates.phase == .results:
                     duplicates.removeSelected()
                     return
+                case .storageAudit where audit.phase == .results:
+                    audit.pickLowRegret()
+                    audit.moveToTrash()
+                    return
                 default:
                     continue
                 }
@@ -161,6 +166,7 @@ final class AppModel {
         case .uninstaller: uninstaller.scan()
         case .startup: startup.refresh()
         case .maintenance: break
+        case .storageAudit: audit.scan()
         }
     }
 

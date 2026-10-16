@@ -97,7 +97,7 @@ extension Color {
 // MARK: - Modules
 
 enum Module: String, CaseIterable, Identifiable {
-    case overview, junk, largeFiles, duplicates, spaceLens, uninstaller, startup, maintenance
+    case overview, junk, largeFiles, duplicates, spaceLens, storageAudit, uninstaller, startup, maintenance
 
     var id: String { rawValue }
 
@@ -111,6 +111,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .uninstaller: "Uninstaller"
         case .startup: "Startup & Activity"
         case .maintenance: "Maintenance"
+        case .storageAudit: "Storage Audit"
         }
     }
 
@@ -124,6 +125,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .uninstaller: "Remove apps together with the support files they scatter around."
         case .startup: "What launches behind your back, and what is using your Mac right now."
         case .maintenance: "Safe, well-known fixes for a Mac that is acting up."
+        case .storageAudit: "Hidden caches, VMs, simulators, AI models and toolchains, sized, with what removing each costs."
         }
     }
 
@@ -137,6 +139,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .uninstaller: "xmark.bin"
         case .startup: "bolt"
         case .maintenance: "wrench.and.screwdriver"
+        case .storageAudit: "list.bullet.clipboard"
         }
     }
 
@@ -152,6 +155,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .uninstaller: [(0xF25C38, 0xFF7A59), (0xD62A52, 0xE5395F)]
         case .startup: [(0xE3A400, 0xF7D34B), (0x35A84A, 0x5FCB6B)]
         case .maintenance: [(0x14B391, 0x4FE0C0), (0x2E9459, 0x3FA66B)]
+        case .storageAudit: [(0x0E9F8E, 0x2DD4BF), (0x4F46E5, 0x818CF8)]
         }
     }
 
@@ -165,7 +169,7 @@ enum Module: String, CaseIterable, Identifiable {
 
     static let sections: [(String, [Module])] = [
         ("", [.overview]),
-        ("Cleanup", [.junk, .largeFiles, .duplicates, .spaceLens]),
+        ("Cleanup", [.junk, .largeFiles, .duplicates, .spaceLens, .storageAudit]),
         ("Applications", [.uninstaller]),
         ("Speed", [.startup, .maintenance])
     ]

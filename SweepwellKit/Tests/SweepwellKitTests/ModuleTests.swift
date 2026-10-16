@@ -250,4 +250,83 @@ final class ModuleTests: XCTestCase {
         XCTAssertEqual(groups.first?.items.filter(\.selectedByDefault).map(\.name), ["com.vendor.editor"],
                        "a running app's cache is listed but not chosen")
     }
+
+    func testStorageAuditMapsGroupsWithIDsCostsAndWarnings() throws {
+        let fixture = try Fixture()
+        try fixture.file("Library/Developer/Xcode/DerivedData/App-abc/Build/x.o", bytes: 90 << 20)
+        try fixture.file(".gradle/caches/modules/x.jar", bytes: 60 << 20)
+        try fixture.file(".cache/codex-runtimes/blob", bytes: 70 << 20)
+        try fixture.file(".cache/huggingface/hub/model.bin", bytes: 120 << 20)
+        try fixture.file(".lima/dev/diffdisk", bytes: 200 << 20)
+        try fixture.file(".lima/_config/user", bytes: 1 << 20)
+        try fixture.file(".android/avd/Pixel_8.avd/userdata.img", bytes: 80 << 20)
+        try fixture.file(".antigravity/extensions/x", bytes: 60 << 20)
+        try fixture.file(".antigravity-backup/extensions/x", bytes: 55 << 20)
+        try fixture.file("VulkanSDK/1.3/lib.dylib", bytes: 150 << 20)
+        try fixture.file(".mysterytool/data.bin", bytes: 520 << 20)
+        try fixture.file(".npm/_cacache/tiny", bytes: 1 << 20)   // below the reporting floor
+        try "export VULKAN_SDK=$HOME/VulkanSDK/1.3/macOS".write(to: fixture.url(".zshrc"), atomically: true, encoding: .utf8)
+
+        let report = StorageAuditor(environment: fixture.environment).scan()
+        func item(_ title: String) -> AuditItem? { report.items.first { $0.title == title } }
+
+        XCTAssertEqual(report.items(in: .caches).map(\.id), ["A1", "A2", "A3"], "ranked by size within the group")
+        XCTAssertEqual(item("Xcode build data")?.id, "A1")
+        XCTAssertNil(item("npm cache"), "tiny items are left out")
+        XCTAssertEqual(item("codex-runtimes (~/.cache)")?.group, .caches)
+        XCTAssertEqual(item("Hugging Face models")?.group, .ai, "model stores are AI, not cache")
+        XCTAssertEqual(item("Lima VM “dev”")?.removal, .trash)
+        XCTAssertEqual(item("Android emulator “Pixel_8”")?.removal, .command("avdmanager delete avd -n Pixel_8"))
+        XCTAssertEqual(item("Backup copy .antigravity-backup")?.recommended, true)
+        XCTAssertEqual(item("Antigravity")?.recommended, false)
+        XCTAssertEqual(item("Vulkan SDK")?.warnings, ["Mentioned in your shell config"])
+        XCTAssertEqual(item("~/.mysterytool")?.removal, .reveal, "unknown hidden folders are only shown")
+        XCTAssertTrue(report.items.allSatisfy { !$0.cost.isEmpty })
+        XCTAssertTrue(report.items(in: .caches).allSatisfy(\.recommended), "caches are the low-regret set")
+
+        // Whatever the audit offers for the Trash, the guard accepts; and removal is recoverable.
+        let guardian = SafetyGuard(environment: fixture.environment)
+        for offered in report.items where offered.removal == .trash {
+            XCTAssertNoThrow(try guardian.validate(try XCTUnwrap(offered.url), purpose: .auditItem), offered.title)
+        }
+        let lima = try XCTUnwrap(item("Lima VM “dev”"))
+        let removed = Remover(environment: fixture.environment)
+            .remove([RemovalRequest(url: try XCTUnwrap(lima.url), size: lima.size, purpose: .auditItem)], mode: .trash)
+        XCTAssertTrue(removed.failures.isEmpty)
+        XCTAssertFalse(fixture.exists(".lima/dev"))
+        XCTAssertTrue(fixture.exists(".Trash/dev"))
+        XCTAssertTrue(fixture.exists(".lima/_config"))
+    }
+
+    func testAuditRemovalRefusesPersonalAndCredentialFolders() throws {
+        let fixture = try Fixture()
+        let guardian = SafetyGuard(environment: fixture.environment)
+        for path in ["Documents/thesis", "Desktop/x", "Downloads/x", ".ssh", ".config/gh", ".aws", ".Trash/x",
+                     "Library", "Library/Mail/V10", "Library/Keychains/login.keychain-db", ".zshrc", "Applications/Tool.app"] {
+            XCTAssertThrowsError(try guardian.validate(fixture.url(path), purpose: .auditItem), path)
+        }
+        XCTAssertThrowsError(try guardian.validate(URL(fileURLWithPath: "/Library/Developer/CoreSimulator/Caches"), purpose: .auditItem))
+        for path in [".lima/dev", "VulkanSDK", ".cache/huggingface", "Library/Application Support/Claude/vm_bundles"] {
+            XCTAssertNoThrow(try guardian.validate(fixture.url(path), purpose: .auditItem), path)
+        }
+    }
+
+    func testAuditHelpers() {
+        XCTAssertEqual(StorageAuditor.runtimeName("com.apple.CoreSimulator.SimRuntime.iOS-18-2"), "iOS 18.2")
+        XCTAssertEqual(StorageAuditor.parseSize("3.3", unit: "GB"), 3_300_000_000)
+        XCTAssertEqual(StorageAuditor.platformName("com.apple.platform.xrsimulator"), "visionOS")
+        XCTAssertEqual(StorageAuditor.quote("Pixel 8"), "'Pixel 8'")
+    }
+
+    func testStorageAuditOnThisMacIsReadOnlyAndSane() throws {
+        // Real home, real tools: only reads. Prints the map so a person can sanity-check it.
+        let report = StorageAuditor(environment: .live).scan()
+        for group in AuditItem.Group.allCases {
+            let items = report.items(in: group)
+            print("\(group.rawValue). \(group.title): \(items.count) items, \(Format.bytes(report.total(of: group)))")
+            for item in items.prefix(4) { print("   \(item.id) \(item.title) \(Format.bytes(item.size)) \(item.warnings)") }
+        }
+        XCTAssertFalse(report.items.isEmpty)
+        XCTAssertEqual(Set(report.items.map(\.id)).count, report.items.count, "IDs are unique")
+    }
 }

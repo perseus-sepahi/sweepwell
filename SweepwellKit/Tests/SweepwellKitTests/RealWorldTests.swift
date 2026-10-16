@@ -21,4 +21,15 @@ final class RealWorldTests: XCTestCase {
         print("DU   size=\(Format.bytes(duBytes)) in \(String(format: "%.2f", duTime))s")
         XCTAssertEqual(Double(tree.size), Double(duBytes), accuracy: Double(duBytes) * 0.02)
     }
+
+    func testAccountingOnThisMac() throws {
+        guard ProcessInfo.processInfo.environment["SWEEPWELL_ACCOUNTING"] == "1" else {
+            throw XCTSkip("set SWEEPWELL_ACCOUNTING=1 to run (reads the whole Data volume, a few minutes)")
+        }
+        let start = Date()
+        let result = StorageAuditor(environment: .live).account()
+        print("ACCOUNTING consumed=\(Format.bytes(result.consumed)) readable=\(Format.bytes(result.readable)) gap=\(Format.bytes(result.gap)) open-deleted=\(Format.bytes(result.heldByOpenFiles)) snapshots=\(result.localSnapshots) denied=\(result.deniedDirectories) in \(Int(Date().timeIntervalSince(start)))s")
+        XCTAssertGreaterThan(result.consumed, result.readable / 2)
+        XCTAssertGreaterThan(result.readable, 1 << 30)
+    }
 }

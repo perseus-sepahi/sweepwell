@@ -67,6 +67,7 @@ struct RootView: View {
         case .uninstaller: UninstallerView()
         case .startup: StartupView()
         case .maintenance: MaintenanceView()
+        case .storageAudit: StorageAuditView()
         }
     }
 }
