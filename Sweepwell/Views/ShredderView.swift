@@ -196,6 +196,10 @@ struct ShredderView: View {
                 .font(.callout.weight(.semibold))
             Text("\(Format.bytes(report.bytesOverwritten)) written over them in \(passes.rawValue) pass\(passes == .one ? "" : "es"), then deleted.")
                 .font(.caption).foregroundStyle(.secondary)
+            if report.compressedFiles > 0 {
+                Text("\(report.compressedFiles) file\(report.compressedFiles == 1 ? " was" : "s were") stored compressed by macOS. Its old compressed copy cannot be overwritten in place; FileVault keeps it unreadable until the space is reused.")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(3)
+            }
             ForEach(report.failures) { failure in
                 Text("\(failure.url.lastPathComponent) was left alone: \(failure.message)").font(.caption).foregroundStyle(Color.warning)
             }

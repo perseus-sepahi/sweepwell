@@ -131,10 +131,9 @@ final class SafetyTests: XCTestCase {
         // Read each file between its last overwrite pass and its truncation: full length, and
         // not one copy of the secret left. Three passes end on zeros.
         var checked: [String: Bool] = [:]
-        let report = Shredder(environment: fixture.environment).shred([fixture.url("Documents/secrets")], passes: .three) { path in
-            let onDisk = (try? Data(contentsOf: URL(fileURLWithPath: path))) ?? Data()
-            checked[(path as NSString).lastPathComponent] = !onDisk.isEmpty && onDisk.range(of: secret) == nil
-                && onDisk.allSatisfy { $0 == 0 }
+        let report = Shredder(environment: fixture.environment).shred([fixture.url("Documents/secrets")], passes: .three) { seen in
+            checked[seen.name] = !seen.contents.isEmpty && seen.contents.range(of: secret) == nil
+                && seen.contents.allSatisfy { $0 == 0 }
         }
         XCTAssertTrue(report.failures.isEmpty, "\(report.failures)")
         XCTAssertEqual(checked, ["notes.txt": true, "small.txt": true])
@@ -151,8 +150,8 @@ final class SafetyTests: XCTestCase {
         try fixture.directory("Documents")
         try original.write(to: fixture.url("Documents/a.bin"))
         var onDisk = Data()
-        let report = Shredder(environment: fixture.environment).shred([fixture.url("Documents/a.bin")], passes: .one) { path in
-            onDisk = (try? Data(contentsOf: URL(fileURLWithPath: path))) ?? Data()
+        let report = Shredder(environment: fixture.environment).shred([fixture.url("Documents/a.bin")], passes: .one) { seen in
+            onDisk = seen.contents
         }
         XCTAssertTrue(report.failures.isEmpty)
         XCTAssertEqual(onDisk.count, original.count, "every byte was rewritten, none appended or skipped")
@@ -191,5 +190,33 @@ final class SafetyTests: XCTestCase {
         print("Shred conditions: FileVault \(String(describing: conditions.fileVaultOn)), SSD \(String(describing: conditions.solidState)), snapshots \(conditions.localSnapshots)")
         XCTAssertNotNil(conditions.fileVaultOn)
         XCTAssertNotNil(conditions.solidState)
+    }
+
+    func testShredderWipesExtendedAttributesAndResourceFork() throws {
+        let fixture = try Fixture()
+        let file = try fixture.file("Documents/tagged.txt", bytes: 4096)
+        let secret = Array("PASSWORD=hunter2".utf8)
+        XCTAssertEqual(setxattr(file.path, "com.example.secret", secret, secret.count, 0, 0), 0)
+        XCTAssertEqual(setxattr(file.path, XATTR_RESOURCEFORK_NAME, secret, secret.count, 0, 0), 0)
+        var remaining: [String]?
+        let report = Shredder(environment: fixture.environment).shred([file], passes: .one) {
+            remaining = $0.remainingAttributes.filter { !Shredder.systemAttributes.contains($0) }
+        }
+        XCTAssertTrue(report.failures.isEmpty, "\(report.failures)")
+        XCTAssertEqual(remaining, [], "every attribute, the resource fork included, is gone before the file is")
+        XCTAssertFalse(fixture.exists("Documents/tagged.txt"))
+    }
+
+    func testShredderNeverFollowsASymlinkSwappedInForAFolder() throws {
+        let fixture = try Fixture()
+        try fixture.file("Documents/outside/precious.txt", bytes: 1000)
+        try fixture.file("Documents/target/inner.txt", bytes: 1000)
+        try FileManager.default.createSymbolicLink(at: fixture.url("Documents/target/sub"),
+                                                   withDestinationURL: fixture.url("Documents/outside"))
+        let report = Shredder(environment: fixture.environment).shred([fixture.url("Documents/target")], passes: .one)
+        XCTAssertTrue(report.failures.isEmpty)
+        XCTAssertFalse(fixture.exists("Documents/target"))
+        XCTAssertTrue(fixture.exists("Documents/outside/precious.txt"), "the link's target is untouched")
+        XCTAssertEqual(try Data(contentsOf: fixture.url("Documents/outside/precious.txt")).count, 1000)
     }
 }
