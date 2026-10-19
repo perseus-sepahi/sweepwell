@@ -104,6 +104,11 @@ private struct LargeFileRow: View {
         .contextMenu {
             Button("Reveal in Finder") { NSWorkspace.shared.reveal(file.url) }
             Button("Quick Look") { NSWorkspace.shared.open(file.url) }
+            Divider()
+            Button("Add to Shredder…") {
+                app.shredder.add([file.url])
+                app.selection = .shredder
+            }
         }
     }
 }

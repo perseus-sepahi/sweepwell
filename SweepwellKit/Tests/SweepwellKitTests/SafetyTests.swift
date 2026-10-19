@@ -115,4 +115,81 @@ final class SafetyTests: XCTestCase {
         let trashed = try FileManager.default.contentsOfDirectory(atPath: fixture.url(".Trash").path)
         XCTAssertEqual(trashed.count, 2, "moved next to the existing item under a unique name: \(trashed)")
     }
+
+    func testShredderOverwritesBeforeDeletingAndLeavesNoTrace() throws {
+        let fixture = try Fixture()
+        let secret = Data("PASSWORD=hunter2 ".utf8)
+        var payload = Data()
+        while payload.count < 3_000_000 { payload.append(secret) }
+        try fixture.directory("Documents/secrets/inner")
+        try payload.write(to: fixture.url("Documents/secrets/notes.txt"))
+        try payload.prefix(5000).write(to: fixture.url("Documents/secrets/inner/small.txt"))
+        try FileManager.default.createSymbolicLink(at: fixture.url("Documents/secrets/link"),
+                                                   withDestinationURL: fixture.url("Documents/keep.txt"))
+        try fixture.file("Documents/keep.txt", bytes: 100)
+
+        // Read each file between its last overwrite pass and its truncation: full length, and
+        // not one copy of the secret left. Three passes end on zeros.
+        var checked: [String: Bool] = [:]
+        let report = Shredder(environment: fixture.environment).shred([fixture.url("Documents/secrets")], passes: .three) { path in
+            let onDisk = (try? Data(contentsOf: URL(fileURLWithPath: path))) ?? Data()
+            checked[(path as NSString).lastPathComponent] = !onDisk.isEmpty && onDisk.range(of: secret) == nil
+                && onDisk.allSatisfy { $0 == 0 }
+        }
+        XCTAssertTrue(report.failures.isEmpty, "\(report.failures)")
+        XCTAssertEqual(checked, ["notes.txt": true, "small.txt": true])
+        XCTAssertEqual(report.bytesOverwritten, Int64(payload.count + 5000) * 3, "three full passes")
+        XCTAssertFalse(fixture.exists("Documents/secrets"))
+        XCTAssertTrue(fixture.exists("Documents/keep.txt"), "a symlink's target is never touched")
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: fixture.url("Documents").path) == ["keep.txt"],
+                      "no renamed leftovers")
+    }
+
+    func testOnePassWritesRandomBytesOverTheWholeFile() throws {
+        let fixture = try Fixture()
+        let original = Data(repeating: 0x41, count: 2_000_000)
+        try fixture.directory("Documents")
+        try original.write(to: fixture.url("Documents/a.bin"))
+        var onDisk = Data()
+        let report = Shredder(environment: fixture.environment).shred([fixture.url("Documents/a.bin")], passes: .one) { path in
+            onDisk = (try? Data(contentsOf: URL(fileURLWithPath: path))) ?? Data()
+        }
+        XCTAssertTrue(report.failures.isEmpty)
+        XCTAssertEqual(onDisk.count, original.count, "every byte was rewritten, none appended or skipped")
+        XCTAssertNil(onDisk.range(of: Data(repeating: 0x41, count: 16)), "no run of the original is left")
+        // Random data: all 256 byte values show up and none dominates.
+        var counts = [Int](repeating: 0, count: 256)
+        for byte in onDisk { counts[Int(byte)] += 1 }
+        XCTAssertTrue(counts.allSatisfy { $0 > 6000 && $0 < 9700 }, "looks uniformly random")
+        XCTAssertFalse(fixture.exists("Documents/a.bin"))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: fixture.url("Documents").path), [])
+    }
+
+    func testShredderRefusesHardLinksAndDangerousTargets() throws {
+        let fixture = try Fixture()
+        try fixture.file("Documents/a.txt", bytes: 1000)
+        try FileManager.default.linkItem(at: fixture.url("Documents/a.txt"), to: fixture.url("Documents/b.txt"))
+        let report = Shredder(environment: fixture.environment).shred([fixture.url("Documents/a.txt")], passes: .one)
+        XCTAssertEqual(report.failures.count, 1)
+        XCTAssertTrue(fixture.exists("Documents/a.txt") && fixture.exists("Documents/b.txt"), "nothing touched")
+
+        let guardian = SafetyGuard(environment: fixture.environment)
+        try fixture.directory("Projects")
+        for path in ["", "Documents", "Desktop", "Projects", "Library/Keychains/login.keychain-db", "Library/Caches/x",
+                     ".ssh", ".zshrc", ".Trash"] {
+            XCTAssertThrowsError(try guardian.validate(fixture.url(path), purpose: .shred), path.isEmpty ? "home" : path)
+        }
+        XCTAssertThrowsError(try guardian.validate(URL(fileURLWithPath: "/etc/hosts"), purpose: .shred))
+        for path in ["Documents/a.txt", "Projects/old", ".Trash/old.zip", ".ssh/id_old", "Desktop/scan.pdf"] {
+            XCTAssertNoThrow(try guardian.validate(fixture.url(path), purpose: .shred), path)
+        }
+        XCTAssertNoThrow(try guardian.validate(URL(fileURLWithPath: "/Volumes/USB/tax.pdf"), purpose: .shred))
+    }
+
+    func testShredConditionsReadOnThisMac() {
+        let conditions = ShredConditions.current()
+        print("Shred conditions: FileVault \(String(describing: conditions.fileVaultOn)), SSD \(String(describing: conditions.solidState)), snapshots \(conditions.localSnapshots)")
+        XCTAssertNotNil(conditions.fileVaultOn)
+        XCTAssertNotNil(conditions.solidState)
+    }
 }

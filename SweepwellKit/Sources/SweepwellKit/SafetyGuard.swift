@@ -16,6 +16,8 @@ public enum RemovalPurpose: Sendable {
     case launchAgent
     /// A folder the storage audit found and the user picked (always moved to the Trash).
     case auditItem
+    /// A file or folder the user dropped on the shredder: overwritten, then deleted for good.
+    case shred
 }
 
 public struct SafetyViolation: Error, LocalizedError, Sendable {
@@ -44,7 +46,7 @@ public struct SafetyGuard: Sendable {
     ]
 
     /// Top-level home entries an audit removal must never touch.
-    private static let auditDenied: Set<String> = [
+    static let auditDenied: Set<String> = [
         ".Trash", ".ssh", ".gnupg", ".config", ".aws", ".kube", ".docker", ".netrc", ".password-store",
         "Applications", ".zshrc", ".zprofile", ".bashrc", ".bash_profile", ".profile", ".gitconfig"
     ]
@@ -67,7 +69,7 @@ public struct SafetyGuard: Sendable {
 
         guard let parts = components(of: resolved, below: environment.home) else {
             // Outside the home folder only user-picked files on external volumes are fair game.
-            if purpose == .userFile, let external = Self.components(of: resolved, belowPath: "/Volumes"),
+            if purpose == .userFile || purpose == .shred, let external = Self.components(of: resolved, belowPath: "/Volumes"),
                external.count >= 2 {
                 return
             }
@@ -123,6 +125,20 @@ public struct SafetyGuard: Sendable {
                 guard parts.count >= 3 else { throw refuse("it is a top-level Library folder") }
                 if Self.protectedLibraryFolders.contains(parts[1]) { throw refuse("~/Library/\(parts[1]) holds personal data") }
             }
+
+        case .shred:
+            if parts.count == 1 {
+                // Whole top-level folders (Documents, Desktop, …) and dotfiles that hold
+                // credentials or shell setup are too big a blast radius for one click.
+                var isDirectory: ObjCBool = false
+                FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+                let personal = Self.personalFolders.contains(first) || ["Desktop", "Downloads", "Applications"].contains(first)
+                if personal || (isDirectory.boolValue && !first.hasPrefix(".")) || Self.auditDenied.contains(first) {
+                    throw refuse("~/\(first) is a whole top-level folder or holds credentials")
+                }
+            }
+            if first == "Library" { throw refuse("~/Library belongs to your apps and macOS") }
+            if first == ".Trash", parts.count == 1 { throw refuse("it is the Trash itself") }
 
         case .application:
             break

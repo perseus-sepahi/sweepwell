@@ -97,7 +97,7 @@ extension Color {
 // MARK: - Modules
 
 enum Module: String, CaseIterable, Identifiable {
-    case overview, junk, largeFiles, duplicates, spaceLens, storageAudit, uninstaller, startup, maintenance
+    case overview, junk, largeFiles, duplicates, spaceLens, storageAudit, uninstaller, startup, maintenance, shredder
 
     var id: String { rawValue }
 
@@ -112,6 +112,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .startup: "Startup & Activity"
         case .maintenance: "Maintenance"
         case .storageAudit: "Storage Audit"
+        case .shredder: "Shredder"
         }
     }
 
@@ -125,6 +126,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .uninstaller: "Remove apps together with the support files they scatter around."
         case .startup: "What launches behind your back, and what is using your Mac right now."
         case .maintenance: "Safe, well-known fixes for a Mac that is acting up."
+        case .shredder: "Overwrites files before deleting them, so they cannot simply be undeleted."
         case .storageAudit: "Hidden caches, VMs, simulators, AI models and toolchains, sized, with what removing each costs."
         }
     }
@@ -140,6 +142,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .startup: "bolt"
         case .maintenance: "wrench.and.screwdriver"
         case .storageAudit: "list.bullet.clipboard"
+        case .shredder: "scissors"
         }
     }
 
@@ -156,6 +159,7 @@ enum Module: String, CaseIterable, Identifiable {
         case .startup: [(0xE3A400, 0xF7D34B), (0x35A84A, 0x5FCB6B)]
         case .maintenance: [(0x14B391, 0x4FE0C0), (0x2E9459, 0x3FA66B)]
         case .storageAudit: [(0x0E9F8E, 0x2DD4BF), (0x4F46E5, 0x818CF8)]
+        case .shredder: [(0xDC2626, 0xF87171), (0x7C3AED, 0xA78BFA)]
         }
     }
 
@@ -171,7 +175,8 @@ enum Module: String, CaseIterable, Identifiable {
         ("", [.overview]),
         ("Cleanup", [.junk, .largeFiles, .duplicates, .spaceLens, .storageAudit]),
         ("Applications", [.uninstaller]),
-        ("Speed", [.startup, .maintenance])
+        ("Speed", [.startup, .maintenance]),
+        ("Privacy", [.shredder])
     ]
 }
 

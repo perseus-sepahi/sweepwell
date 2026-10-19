@@ -46,8 +46,13 @@ struct SweepwellApp: App {
                 }.keyboardShortcut("r")
                 Divider()
                 ForEach(Array(Module.allCases.enumerated()), id: \.element) { index, module in
-                    Button(module.title) { model.selection = module }
-                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+                    // ⌘1…⌘9 only: a shortcut is one key, and "10" is two (it crashed at launch).
+                    if index < 9 {
+                        Button(module.title) { model.selection = module }
+                            .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+                    } else {
+                        Button(module.title) { model.selection = module }
+                    }
                 }
             }
         }

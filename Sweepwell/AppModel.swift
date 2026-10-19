@@ -68,6 +68,7 @@ final class AppModel {
     let startup: StartupModel
     let maintenance = MaintenanceModel()
     let audit = StorageAuditModel()
+    let shredder = ShredderModel()
 
     private let sampler = SystemSampler()
     private var monitor: Task<Void, Never>?
@@ -84,6 +85,10 @@ final class AppModel {
         let arguments = ProcessInfo.processInfo.environment
         if let module = arguments["SWEEPWELL_MODULE"].flatMap(Module.init(rawValue:)) { selection = module }
         if arguments["SWEEPWELL_AUTOSCAN"] == "1" { startScan(for: selection) }
+        // UI check: preload the shredder (colon-separated paths). Only inside a fixture home.
+        if environment.isFixture, let paths = arguments["SWEEPWELL_SHRED_PATHS"] {
+            shredder.add(paths.split(separator: ":").map { URL(fileURLWithPath: String($0)) })
+        }
         // End-to-end check of the destructive path. Only ever honoured inside a fixture home.
         if arguments["SWEEPWELL_AUTOCLEAN"] == "1", environment.isFixture { autoCleanWhenReady() }
 
@@ -141,6 +146,9 @@ final class AppModel {
                 case .duplicates where duplicates.phase == .results:
                     duplicates.removeSelected()
                     return
+                case .shredder where !shredder.items.isEmpty && shredder.sizes.count == shredder.items.count:
+                    shredder.shred()
+                    return
                 case .storageAudit where audit.phase == .results:
                     audit.pickLowRegret()
                     audit.moveToTrash()
@@ -167,6 +175,7 @@ final class AppModel {
         case .startup: startup.refresh()
         case .maintenance: break
         case .storageAudit: audit.scan()
+        case .shredder: break
         }
     }
 

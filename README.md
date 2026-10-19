@@ -14,6 +14,7 @@ A native Apple silicon Mac cleaner and maintenance app, built with SwiftUI.
 | Uninstaller | Removes an app together with its `~/Library` support files |
 | Startup & Activity | Launch agents and daemons (flags broken ones), top memory consumers |
 | Maintenance | Flush DNS, free inactive memory, thin snapshots, rebuild Spotlight, reset Quick Look, and more |
+| Shredder | Overwrites dropped files and folders (1 random pass, or random-random-zeros) with a full flush to the drive, truncates, scrambles the name, then deletes; shows how far that goes on this Mac (FileVault, SSD/APFS, local snapshots) |
 
 Also: a menu bar monitor, a settings window (⌘,), and day and night themes. **Auto** (the default)
 follows the macOS appearance; the switch at the bottom of the sidebar forces Day or Night.

@@ -68,6 +68,7 @@ struct RootView: View {
         case .startup: StartupView()
         case .maintenance: MaintenanceView()
         case .storageAudit: StorageAuditView()
+        case .shredder: ShredderView()
         }
     }
 }
@@ -97,22 +98,25 @@ struct Sidebar: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
+            // One compact module, so every section of the list stays visible at the default size.
+            VStack(alignment: .leading, spacing: 8) {
                 if model.environment.isFixture {
                     Label("Demo folder", systemImage: "testtube.2")
                         .font(.caption.weight(.semibold)).foregroundStyle(Color.warning)
                         .help(model.environment.home.path)
                 }
-                DiskSummary()
-                    .padding(12)
-                    .panelGlass(RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: true)
-                GlassSlider(compact: true)
-                    .padding(12)
-                    .panelGlass(RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: true)
-                AppearanceSwitch()
+                VStack(alignment: .leading, spacing: 9) {
+                    DiskSummary()
+                    HStack(spacing: 8) {
+                        CompactGlassDial()
+                        AppearanceSwitch().fixedSize()
+                    }
+                }
+                .padding(12)
+                .panelGlass(RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: true)
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 14)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
         }
     }
 }
@@ -140,14 +144,29 @@ private struct DiskSummary: View {
     var body: some View {
         let snapshot = model.snapshot
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                IconDisc(symbol: "internaldrive.fill", color: Module.spaceLens.colors[1], size: 26)
-                Text("Macintosh HD").font(.caption.weight(.semibold))
+            HStack(spacing: 7) {
+                IconDisc(symbol: "internaldrive.fill", color: Module.spaceLens.colors[1], size: 22)
+                Text("Macintosh HD").font(.caption.weight(.semibold)).lineLimit(1).layoutPriority(1)
+                Spacer(minLength: 4)
+                Text("\(Format.bytes(snapshot.diskAvailable)) free").font(.caption2).foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.7)
             }
             ProgressView(value: snapshot.diskFraction).tint(snapshot.diskFraction > 0.9 ? Color.danger : Module.spaceLens.accent)
-            Text("\(Format.bytes(snapshot.diskAvailable)) free of \(Format.bytes(snapshot.diskTotal))")
-                .font(.caption2).foregroundStyle(.secondary)
+                .help("\(Format.bytes(snapshot.diskAvailable)) free of \(Format.bytes(snapshot.diskTotal))")
         }
+    }
+}
+
+/// The Glass dial in one line, for the sidebar: the full labelled version lives in Settings.
+private struct CompactGlassDial: View {
+    @AppStorage(Preferences.glassKey) private var glass = Glassiness.default
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "drop.halffull").font(.caption).foregroundStyle(.secondary)
+            Slider(value: $glass, in: 0...1).controlSize(.mini).tint(Module.spaceLens.accent)
+        }
+        .help("Glass: \(Glassiness.label(glass))")
     }
 }
 
