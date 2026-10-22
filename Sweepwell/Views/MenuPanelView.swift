@@ -28,9 +28,12 @@ struct MenuPanelView: View {
             VStack(spacing: PanelGrid.gap) {
                 statusModule(alerts)
                 HStack(alignment: .top, spacing: PanelGrid.gap) {
+                    // Details open below this block, so an opened Disk trades places with
+                    // Memory: whichever is open sits on the bottom row, right above its detail.
                     VStack(spacing: PanelGrid.gap) {
-                        vitalCapsule(.disk)
-                        vitalCapsule(.memory)
+                        ForEach(app.expandedVital == .disk ? [Vital.memory, .disk] : [.disk, .memory], id: \.self) { vital in
+                            vitalCapsule(vital)
+                        }
                     }
                     ProcessorSquare(expanded: app.expandedVital == .processor) { toggle(.processor) }
                 }
