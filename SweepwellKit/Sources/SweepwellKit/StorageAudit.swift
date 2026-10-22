@@ -114,6 +114,15 @@ public struct StorageAuditor: Sendable {
 
     public func scan(control: ScanControl = ScanControl()) -> StorageAuditReport {
         let probe = Probe(control: control, enabled: probeTools)
+        // Xcode's simulator service can take a long time to start (right after login, say), so
+        // it is asked alongside everything else instead of holding the rest up.
+        let simulatorsAnswered = DispatchGroup()
+        let simulatorList = SimulatorList()
+        if probe.enabled {
+            DispatchQueue.global(qos: .userInitiated).async(group: simulatorsAnswered) {
+                simulatorList.set(simulators(probe))
+            }
+        }
         var candidates: [Candidate] = []
         probe.step("Looking for caches…")
         candidates += caches()
@@ -135,7 +144,7 @@ public struct StorageAuditor: Sendable {
         for i in sized.indices where sized[i].lastUsed == nil {
             sized[i].lastUsed = sized[i].url.flatMap(Self.lastChange)
         } 
-        let fromTool = Set(candidates.indices.filter { candidates[$0].lastUsed != nil })
+        var fromTool = Set(candidates.indices.filter { candidates[$0].lastUsed != nil })
         // Size every folder candidate, all cores at once; tool-reported sizes are kept.
         sized.withUnsafeMutableBufferPointer { buffer in
             let slots = UnsafeSendableBuffer(buffer)
@@ -143,6 +152,21 @@ public struct StorageAuditor: Sendable {
                 guard !control.isCancelled, slots.base[i].size == nil, let url = slots.base[i].url else { return }
                 slots.base[i].size = DiskScanner.measure(url, control: control).bytes
             }
+        }
+        if simulatorsAnswered.wait(timeout: .now()) == .timedOut {
+            probe.step("Waiting for Xcode's simulator service…")
+            simulatorsAnswered.wait()
+        }
+        for var simulator in simulatorList.get() {
+            if simulator.lastUsed == nil {
+                simulator.lastUsed = simulator.url.flatMap(Self.lastChange)
+            } else {
+                fromTool.insert(sized.count)
+            }
+            if simulator.size == nil, let url = simulator.url, !control.isCancelled {
+                simulator.size = DiskScanner.measure(url, control: control).bytes
+            }
+            sized.append(simulator)
         }
 
         probe.step("Checking what is running…")
@@ -222,10 +246,6 @@ public struct StorageAuditor: Sendable {
 
     private func machines(_ probe: Probe) -> [Candidate] {
         var list: [Candidate] = []
-        if probe.enabled {
-            probe.step("Asking Xcode about simulators…")
-            list += simulators(probe)
-        }
 
         // Lima VMs: a sparse disk image per VM; the allocated size is the real cost.
         probe.step("Looking for virtual machines…")
@@ -263,11 +283,12 @@ public struct StorageAuditor: Sendable {
 
     private func simulators(_ probe: Probe) -> [Candidate] {
         var list: [Candidate] = []
-        let devicesList = probe.ask("/usr/bin/xcrun", ["simctl", "list", "devices", "-j"], tool: "Xcode's simulator service")
+        let devicesList = probe.ask("/usr/bin/xcrun", ["simctl", "list", "devices", "-j"], tool: Probe.simulatorService,
+                                    limit: Probe.simulatorTimeLimit)
         guard !devicesList.timedOut else {
             // The simulator service is stuck (often Xcode waiting to finish installing). Its
             // folders still say what each simulator is; runtimes have to wait for Xcode.
-            probe.notes.append("Xcode's simulator service did not answer, so simulators were read from their folders and simulator runtimes are not listed. Opening Xcode once usually fixes this.")
+            probe.note("Xcode's simulator service did not answer within \(Int(Probe.simulatorTimeLimit)) seconds, so simulators were read from their folders and simulator runtimes are not listed. If this keeps happening, open Xcode once and let it finish installing its components.")
             return simulatorsFromFolders()
         }
         if let json = devicesList.output?.data(using: .utf8),
@@ -301,7 +322,7 @@ public struct StorageAuditor: Sendable {
                                       removal: .command("xcrun simctl delete unavailable"), recommended: true))
             }
         }
-        if let json = probe.ask("/usr/bin/xcrun", ["simctl", "runtime", "list", "-j"], tool: "Xcode's simulator service").output?.data(using: .utf8),
+        if let json = probe.ask("/usr/bin/xcrun", ["simctl", "runtime", "list", "-j"], tool: Probe.simulatorService, limit: Probe.simulatorTimeLimit).output?.data(using: .utf8),
            let runtimes = try? JSONSerialization.jsonObject(with: json) as? [String: [String: Any]] {
             for runtime in runtimes.values {
                 guard (runtime["deletable"] as? Bool) ?? false, let id = runtime["identifier"] as? String else { continue }
@@ -491,7 +512,7 @@ public struct StorageAuditor: Sendable {
 
     // MARK: Pieces
 
-    private struct Candidate {
+    fileprivate struct Candidate {
         let group: AuditItem.Group
         let title: String
         let url: URL?
@@ -614,15 +635,19 @@ public struct StorageAuditor: Sendable {
 }
 
 /// One audit's questions to installed tools: each gets a time limit, stops with the scan, and
-/// shows up as the current step in the progress view.
+/// shows up as the current step in the progress view. Safe to use from two threads at once.
 final class Probe: @unchecked Sendable {
-    /// How long any one tool may take. A healthy one answers in well under a second; a cold
-    /// simulator service can take several.
+    /// How long any one tool may take. A healthy one answers in well under a second.
     static let timeLimit: TimeInterval = 15
+    /// The simulator service is asked in parallel with the folder sizing and may need a while
+    /// to start, so it gets longer.
+    static let simulatorTimeLimit: TimeInterval = 30
+    static let simulatorService = "Xcode's simulator service"
 
     let control: ScanControl
-    var enabled: Bool
-    var notes: [String] = []
+    let enabled: Bool
+    private let lock = NSLock()
+    private var collected: [String] = []
     private var stuck: Set<String> = []
 
     init(control: ScanControl, enabled: Bool) {
@@ -630,20 +655,37 @@ final class Probe: @unchecked Sendable {
         self.enabled = enabled
     }
 
+    var notes: [String] { lock.withLock { collected } }
+
+    func note(_ text: String) {
+        lock.withLock { collected.append(text) }
+    }
+
     func step(_ text: String) {
         control.record(files: 0, bytes: 0, path: text)
     }
 
     /// A tool that already hung once in this audit is not asked again.
-    func ask(_ executable: String, _ arguments: [String], tool: String) -> Shell.Result {
-        guard !stuck.contains(tool), !control.isCancelled else { return Shell.Result(status: -1, output: nil, timedOut: true) }
-        let result = Shell.run(executable, arguments, timeout: Self.timeLimit, control: control)
+    func ask(_ executable: String, _ arguments: [String], tool: String, limit: TimeInterval = timeLimit) -> Shell.Result {
+        guard !lock.withLock({ stuck.contains(tool) }), !control.isCancelled else {
+            return Shell.Result(status: -1, output: nil, timedOut: true)
+        }
+        let result = Shell.run(executable, arguments, timeout: limit, control: control)
         if result.timedOut, !control.isCancelled {
-            stuck.insert(tool)
-            if tool != "Xcode's simulator service" {
-                notes.append("\(tool) did not answer within \(Int(Self.timeLimit)) seconds, so what it would have reported is missing.")
+            lock.withLock { _ = stuck.insert(tool) }
+            if tool != Self.simulatorService {
+                note("\(tool) did not answer within \(Int(limit)) seconds, so what it would have reported is missing.")
             }
         }
         return result
     }
+}
+
+/// The simulators found on the side thread, handed back to the scan.
+private final class SimulatorList: @unchecked Sendable {
+    private let lock = NSLock()
+    private var list: [StorageAuditor.Candidate] = []
+
+    func set(_ value: [StorageAuditor.Candidate]) { lock.withLock { list = value } }
+    func get() -> [StorageAuditor.Candidate] { lock.withLock { list } }
 }
