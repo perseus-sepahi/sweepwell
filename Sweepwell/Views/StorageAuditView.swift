@@ -154,6 +154,13 @@ struct StorageAuditView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 summary(model, report)
+                ForEach(report.notes, id: \.self) { note in
+                    Label(note, systemImage: "clock.badge.exclamationmark")
+                        .font(.callout).foregroundStyle(.secondary).lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .card()
+                }
                 if let removal = model.removal { afterRemoval(model, removal) }
                 if !model.pickedCommands.isEmpty { commands(model) }
                 ForEach(AuditItem.Group.allCases, id: \.self) { group in

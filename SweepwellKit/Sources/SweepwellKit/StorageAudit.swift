@@ -77,6 +77,8 @@ public struct StorageAuditReport: Sendable {
     public var disk: DiskSpace?
     /// Directories the scan was not allowed into (usually missing Full Disk Access).
     public var deniedDirectories: Int
+    /// Tools that did not answer in time, and what is missing from the map because of it.
+    public var notes: [String] = []
 
     public func items(in group: AuditItem.Group) -> [AuditItem] { items.filter { $0.group == group } }
     public func total(of group: AuditItem.Group) -> Int64 { items(in: group).reduce(0) { $0 + $1.size } }
@@ -111,11 +113,15 @@ public struct StorageAuditor: Sendable {
     // MARK: Scan
 
     public func scan(control: ScanControl = ScanControl()) -> StorageAuditReport {
+        let probe = Probe(control: control, enabled: probeTools)
         var candidates: [Candidate] = []
+        probe.step("Looking for caches…")
         candidates += caches()
-        candidates += machines()
-        candidates += ai()
-        candidates += toolchains()
+        candidates += machines(probe)
+        probe.step("Asking Ollama for its models…")
+        candidates += ai(probe)
+        probe.step("Looking for toolchains…")
+        candidates += toolchains(probe)
         var claimed = Set(candidates.compactMap { $0.url?.standardizedFileURL.path })
         // Ollama models are listed one by one (no folder of their own), so their store is claimed.
         if candidates.contains(where: { $0.title.hasPrefix("Ollama model ") }) {
@@ -139,7 +145,8 @@ public struct StorageAuditor: Sendable {
             }
         }
 
-        let running = probeTools ? runningExecutables() : []
+        probe.step("Checking what is running…")
+        let running = probe.enabled ? runningExecutables(probe) : []
         let shellConfig = shellConfigText()
         var items: [AuditItem] = []
         for (index, candidate) in sized.enumerated() {
@@ -170,7 +177,7 @@ public struct StorageAuditor: Sendable {
             }
         }
         return StorageAuditReport(items: numbered, disk: environment.isFixture ? nil : DiskSpace.startupVolume(),
-                                  deniedDirectories: control.inaccessibleDirectories)
+                                  deniedDirectories: control.inaccessibleDirectories, notes: probe.notes)
     }
 
     // MARK: A. Pure caches
@@ -213,12 +220,16 @@ public struct StorageAuditor: Sendable {
 
     // MARK: B. VMs, simulators, emulators
 
-    private func machines() -> [Candidate] {
+    private func machines(_ probe: Probe) -> [Candidate] {
         var list: [Candidate] = []
-        if probeTools { list += simulators() }
+        if probe.enabled {
+            probe.step("Asking Xcode about simulators…")
+            list += simulators(probe)
+        }
 
         // Lima VMs: a sparse disk image per VM; the allocated size is the real cost.
-        let limaStatus = probeTools ? limaStates() : [:]
+        probe.step("Looking for virtual machines…")
+        let limaStatus = probe.enabled ? limaStates(probe) : [:]
         for url in children(of: ".lima") where !url.lastPathComponent.hasPrefix("_") {
             let name = url.lastPathComponent
             var warnings: [String] = []
@@ -250,9 +261,16 @@ public struct StorageAuditor: Sendable {
         return list
     }
 
-    private func simulators() -> [Candidate] {
+    private func simulators(_ probe: Probe) -> [Candidate] {
         var list: [Candidate] = []
-        if let json = Shell.run("/usr/bin/xcrun", ["simctl", "list", "devices", "-j"]).output?.data(using: .utf8),
+        let devicesList = probe.ask("/usr/bin/xcrun", ["simctl", "list", "devices", "-j"], tool: "Xcode's simulator service")
+        guard !devicesList.timedOut else {
+            // The simulator service is stuck (often Xcode waiting to finish installing). Its
+            // folders still say what each simulator is; runtimes have to wait for Xcode.
+            probe.notes.append("Xcode's simulator service did not answer, so simulators were read from their folders and simulator runtimes are not listed. Opening Xcode once usually fixes this.")
+            return simulatorsFromFolders()
+        }
+        if let json = devicesList.output?.data(using: .utf8),
            let root = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
            let byRuntime = root["devices"] as? [String: [[String: Any]]] {
             var unavailable: (count: Int, bytes: Int64) = (0, 0)
@@ -283,7 +301,7 @@ public struct StorageAuditor: Sendable {
                                       removal: .command("xcrun simctl delete unavailable"), recommended: true))
             }
         }
-        if let json = Shell.run("/usr/bin/xcrun", ["simctl", "runtime", "list", "-j"]).output?.data(using: .utf8),
+        if let json = probe.ask("/usr/bin/xcrun", ["simctl", "runtime", "list", "-j"], tool: "Xcode's simulator service").output?.data(using: .utf8),
            let runtimes = try? JSONSerialization.jsonObject(with: json) as? [String: [String: Any]] {
             for runtime in runtimes.values {
                 guard (runtime["deletable"] as? Bool) ?? false, let id = runtime["identifier"] as? String else { continue }
@@ -300,12 +318,27 @@ public struct StorageAuditor: Sendable {
         return list
     }
 
+    /// Each simulator folder carries a device.plist with its name, OS and state.
+    private func simulatorsFromFolders() -> [Candidate] {
+        children(of: "Library/Developer/CoreSimulator/Devices").compactMap { url in
+            guard let data = try? Data(contentsOf: url.appendingPathComponent("device.plist")),
+                  let device = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+                  let udid = device["UDID"] as? String, let name = device["name"] as? String else { return nil }
+            let os = Self.runtimeName(device["runtime"] as? String ?? "")
+            let booted = (device["state"] as? NSNumber)?.intValue == 3
+            return Candidate(group: .machines, title: "\(name) simulator (\(os))", url: url, minimum: 100 << 20,
+                             cost: "Wipes its installed apps and data; the device stays in Xcode",
+                             removal: .command("xcrun simctl erase \(udid)"),
+                             warnings: booted ? ["Booted: shut it down first"] : [])
+        }
+    }
+
     // MARK: C. AI tools and models
 
-    private func ai() -> [Candidate] {
+    private func ai(_ probe: Probe) -> [Candidate] {
         var list: [Candidate] = []
         var ollamaListed = false
-        if probeTools, let output = Shell.run(Self.tool("ollama") ?? "/usr/local/bin/ollama", ["list"]).output,
+        if probe.enabled, let output = probe.ask(Self.tool("ollama") ?? "/usr/local/bin/ollama", ["list"], tool: "Ollama").output,
            output.hasPrefix("NAME") {
             for line in output.split(separator: "\n").dropFirst() {
                 let fields = line.split(separator: " ", omittingEmptySubsequences: true)
@@ -339,9 +372,9 @@ public struct StorageAuditor: Sendable {
 
     // MARK: D. Developer toolchains
 
-    private func toolchains() -> [Candidate] {
+    private func toolchains(_ probe: Probe) -> [Candidate] {
         var list: [Candidate] = []
-        let rustDefault = probeTools ? Shell.run(Self.tool("rustup") ?? "/opt/homebrew/bin/rustup", ["default"]).output?
+        let rustDefault = probe.enabled ? probe.ask(Self.tool("rustup") ?? "/opt/homebrew/bin/rustup", ["default"], tool: "rustup").output?
             .split(separator: " ").first.map(String.init) : nil
         for url in children(of: ".rustup/toolchains") {
             let name = url.lastPathComponent
@@ -424,7 +457,8 @@ public struct StorageAuditor: Sendable {
     /// volume, so the UI runs it only when asked.
     public func account(control: ScanControl = ScanControl()) -> StorageAccounting {
         var consumed: Int64 = 0
-        if let output = Shell.run("/usr/sbin/diskutil", ["info", "-plist", "/System/Volumes/Data"]).output?.data(using: .utf8),
+        if let output = Shell.run("/usr/sbin/diskutil", ["info", "-plist", "/System/Volumes/Data"], timeout: 30, control: control)
+            .output?.data(using: .utf8),
            let info = try? PropertyListSerialization.propertyList(from: output, format: nil) as? [String: Any] {
             consumed = (info["CapacityInUse"] as? NSNumber)?.int64Value ?? 0
         }
@@ -438,13 +472,13 @@ public struct StorageAuditor: Sendable {
             lock.withLock { readable += bytes }
         }
         var held: Int64 = 0
-        if let output = Shell.run("/usr/sbin/lsof", ["-nP", "+L1"]).output {
+        if let output = Shell.run("/usr/sbin/lsof", ["-nP", "+L1"], timeout: 120, control: control).output {
             for line in output.split(separator: "\n").dropFirst() {
                 let fields = line.split(separator: " ", omittingEmptySubsequences: true)
                 if fields.count > 6, let bytes = Int64(fields[6]) { held += bytes }
             }
         }
-        let snapshots = (Shell.run("/usr/bin/tmutil", ["listlocalsnapshots", "/"]).output ?? "")
+        let snapshots = (Shell.run("/usr/bin/tmutil", ["listlocalsnapshots", "/"], timeout: 30, control: control).output ?? "")
             .split(separator: "\n").filter { $0.contains("com.apple") }.count
         return StorageAccounting(consumed: consumed, readable: readable, heldByOpenFiles: held,
                                  localSnapshots: snapshots, deniedDirectories: control.inaccessibleDirectories)
@@ -504,13 +538,13 @@ public struct StorageAuditor: Sendable {
             .map { directory.appendingPathComponent($0.name, isDirectory: true) }
     }
 
-    private func runningExecutables() -> [String] {
-        (Shell.run("/bin/ps", ["-Axo", "comm="]).output ?? "").split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
+    private func runningExecutables(_ probe: Probe) -> [String] {
+        (probe.ask("/bin/ps", ["-Axo", "comm="], tool: "ps").output ?? "").split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
     }
 
-    private func limaStates() -> [String: String] {
+    private func limaStates(_ probe: Probe) -> [String: String] {
         guard let tool = Self.tool("limactl"),
-              let output = Shell.run(tool, ["list", "--format", "{{.Name}}\t{{.Status}}"]).output else { return [:] }
+              let output = probe.ask(tool, ["list", "--format", "{{.Name}}\t{{.Status}}"], tool: "Lima").output else { return [:] }
         var states: [String: String] = [:]
         for line in output.split(separator: "\n") {
             let parts = line.split(separator: "\t")
@@ -576,5 +610,40 @@ public struct StorageAuditor: Sendable {
 
     static func quote(_ text: String) -> String {
         text.allSatisfy { $0.isLetter || $0.isNumber || "._-".contains($0) } ? text : "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+}
+
+/// One audit's questions to installed tools: each gets a time limit, stops with the scan, and
+/// shows up as the current step in the progress view.
+final class Probe: @unchecked Sendable {
+    /// How long any one tool may take. A healthy one answers in well under a second; a cold
+    /// simulator service can take several.
+    static let timeLimit: TimeInterval = 15
+
+    let control: ScanControl
+    var enabled: Bool
+    var notes: [String] = []
+    private var stuck: Set<String> = []
+
+    init(control: ScanControl, enabled: Bool) {
+        self.control = control
+        self.enabled = enabled
+    }
+
+    func step(_ text: String) {
+        control.record(files: 0, bytes: 0, path: text)
+    }
+
+    /// A tool that already hung once in this audit is not asked again.
+    func ask(_ executable: String, _ arguments: [String], tool: String) -> Shell.Result {
+        guard !stuck.contains(tool), !control.isCancelled else { return Shell.Result(status: -1, output: nil, timedOut: true) }
+        let result = Shell.run(executable, arguments, timeout: Self.timeLimit, control: control)
+        if result.timedOut, !control.isCancelled {
+            stuck.insert(tool)
+            if tool != "Xcode's simulator service" {
+                notes.append("\(tool) did not answer within \(Int(Self.timeLimit)) seconds, so what it would have reported is missing.")
+            }
+        }
+        return result
     }
 }

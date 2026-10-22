@@ -146,10 +146,14 @@ struct ScanningView: View {
             TimelineView(.periodic(from: .now, by: 0.12)) { _ in
                 VStack(spacing: 6) {
                     Text(title).font(.system(size: 20, weight: .semibold, design: .rounded))
-                    Text("\(control.filesScanned.formatted()) files · \(Format.bytes(control.bytesScanned))")
-                        .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                    // Until a folder is being measured the step itself is the progress.
+                    if control.filesScanned > 0 {
+                        Text("\(control.filesScanned.formatted()) files · \(Format.bytes(control.bytesScanned))")
+                            .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                    }
                     Text(control.currentPath)
-                        .font(.caption).foregroundStyle(.tertiary)
+                        .font(control.filesScanned > 0 ? .caption : .callout)
+                        .foregroundStyle(control.filesScanned > 0 ? .tertiary : .secondary)
                         .lineLimit(1).truncationMode(.middle).frame(maxWidth: 520)
                 }
             }

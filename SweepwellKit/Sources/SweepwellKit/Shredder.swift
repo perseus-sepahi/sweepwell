@@ -10,13 +10,13 @@ public struct ShredConditions: Sendable, Equatable {
     public var localSnapshots: Int
 
     public static func current() -> ShredConditions {
-        let fileVault = Shell.run("/usr/bin/fdesetup", ["isactive"]).output?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fileVault = Shell.run("/usr/bin/fdesetup", ["isactive"], timeout: 15).output?.trimmingCharacters(in: .whitespacesAndNewlines)
         var solidState: Bool?
-        if let info = Shell.run("/usr/sbin/diskutil", ["info", "-plist", "/"]).output?.data(using: .utf8),
+        if let info = Shell.run("/usr/sbin/diskutil", ["info", "-plist", "/"], timeout: 15).output?.data(using: .utf8),
            let plist = try? PropertyListSerialization.propertyList(from: info, format: nil) as? [String: Any] {
             solidState = plist["SolidState"] as? Bool
         }
-        let snapshots = (Shell.run("/usr/bin/tmutil", ["listlocalsnapshots", "/"]).output ?? "")
+        let snapshots = (Shell.run("/usr/bin/tmutil", ["listlocalsnapshots", "/"], timeout: 15).output ?? "")
             .split(separator: "\n").filter { $0.contains("com.apple") }.count
         return ShredConditions(fileVaultOn: fileVault.map { $0 == "true" }, solidState: solidState, localSnapshots: snapshots)
     }

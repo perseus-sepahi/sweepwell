@@ -329,4 +329,30 @@ final class ModuleTests: XCTestCase {
         XCTAssertFalse(report.items.isEmpty)
         XCTAssertEqual(Set(report.items.map(\.id)).count, report.items.count, "IDs are unique")
     }
+
+    // MARK: Shell
+
+    func testShellKillsAToolThatNeverAnswers() {
+        let start = Date()
+        let result = Shell.run("/bin/sleep", ["30"], timeout: 1)
+        XCTAssertTrue(result.timedOut)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 4)
+    }
+
+    func testStoppingAScanStopsItsTool() {
+        let control = ScanControl()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { control.cancel() }
+        let start = Date()
+        let result = Shell.run("/bin/sleep", ["30"], control: control)
+        XCTAssertTrue(result.timedOut)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+    }
+
+    func testShellReadsLongOutputWithoutStalling() {
+        // Far more than a pipe holds: the tool would block forever if nobody read while it ran.
+        let result = Shell.run("/bin/dd", ["if=/dev/zero", "bs=1048576", "count=4", "status=none"], timeout: 20)
+        XCTAssertFalse(result.timedOut)
+        XCTAssertTrue(result.succeeded)
+        XCTAssertEqual(result.output?.utf8.count, 4 << 20)
+    }
 }

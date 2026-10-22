@@ -32,4 +32,17 @@ final class RealWorldTests: XCTestCase {
         XCTAssertGreaterThan(result.consumed, result.readable / 2)
         XCTAssertGreaterThan(result.readable, 1 << 30)
     }
+
+    func testAuditOnThisMac() throws {
+        guard ProcessInfo.processInfo.environment["SWEEPWELL_AUDIT"] == "1" else {
+            throw XCTSkip("set SWEEPWELL_AUDIT=1 to run (read-only audit of this Mac)")
+        }
+        let start = Date()
+        let report = StorageAuditor(environment: .live).scan()
+        let seconds = Date().timeIntervalSince(start)
+        print("AUDIT items=\(report.items.count) total=\(Format.bytes(report.items.reduce(0) { $0 + $1.size })) in \(String(format: "%.1f", seconds))s")
+        for note in report.notes { print("NOTE \(note)") }
+        for item in report.items where item.group == .machines { print("  \(item.id) \(item.title) \(Format.bytes(item.size))") }
+        XCTAssertFalse(report.items.isEmpty)
+    }
 }

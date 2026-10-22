@@ -81,21 +81,61 @@ public enum Shell {
     public struct Result: Sendable {
         public let status: Int32
         public let output: String?
+        /// The tool did not finish within its time limit (or the scan was stopped) and was killed.
+        public var timedOut = false
         public var succeeded: Bool { status == 0 }
     }
 
     /// Runs a fixed executable with an argument vector; nothing is ever passed through a shell.
+    ///
+    /// - Parameters:
+    ///   - timeout: seconds to wait before the tool is killed. Nil waits as long as it takes, for
+    ///     work that may legitimately be slow or sit behind a password dialog.
+    ///   - control: stopping this scan also kills the tool.
     @discardableResult
-    public static func run(_ executable: String, _ arguments: [String]) -> Result {
+    public static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval? = nil,
+                           control: ScanControl? = nil) -> Result {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         do { try process.run() } catch { return Result(status: -1, output: error.localizedDescription) }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return Result(status: process.terminationStatus, output: String(data: data, encoding: .utf8))
+
+        // Read on another thread, so a chatty tool never blocks on a full pipe while we wait.
+        let output = OutputBox()
+        let reader = pipe.fileHandleForReading
+        DispatchQueue.global(qos: .utility).async {
+            output.set(reader.readDataToEndOfFile())
+        }
+
+        let deadline = timeout.map { Date().addingTimeInterval($0) }
+        while exited.wait(timeout: .now() + 0.1) == .timedOut {
+            let cancelled = control?.isCancelled ?? false
+            guard cancelled || deadline.map({ Date() >= $0 }) == true else { continue }
+            process.terminate()
+            if exited.wait(timeout: .now() + 1) == .timedOut { kill(process.processIdentifier, SIGKILL) }
+            return Result(status: -1, output: nil, timedOut: true)
+        }
+        // A helper the tool started may keep the pipe open after it exits; do not wait on it long.
+        let data = output.wait(upTo: 2)
+        return Result(status: process.terminationStatus, output: data.flatMap { String(data: $0, encoding: .utf8) })
+    }
+
+    private final class OutputBox: @unchecked Sendable {
+        private let ready = DispatchSemaphore(value: 0)
+        private var data: Data?
+
+        func set(_ value: Data) {
+            data = value
+            ready.signal()
+        }
+
+        func wait(upTo seconds: TimeInterval) -> Data? {
+            ready.wait(timeout: .now() + seconds) == .success ? data : nil
+        }
     }
 }
