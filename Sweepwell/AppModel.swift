@@ -151,7 +151,7 @@ final class AppModel {
                     return
                 case .storageAudit where audit.phase == .results:
                     audit.pickLowRegret()
-                    audit.moveToTrash()
+                    audit.remove()
                     return
                 default:
                     continue

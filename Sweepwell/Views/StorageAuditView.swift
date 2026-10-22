@@ -21,11 +21,27 @@ final class StorageAuditModel {
     var accountingRunning = false
     var accountingControl = ScanControl()
     var copiedID: String?
+    /// Results of the tool removals from the last Remove, one per item.
+    var toolOutcomes: [ToolOutcome] = []
+    /// What is being removed right now, for the progress view.
+    var workingOn = ""
+
+    struct ToolOutcome: Identifiable {
+        let id: String
+        let title: String
+        let size: Int64
+        let succeeded: Bool
+        let message: String
+    }
 
     var pickedItems: [AuditItem] { report?.items.filter { picked.contains($0.id) } ?? [] }
     var pickedTrash: [AuditItem] { pickedItems.filter { $0.removal == .trash } }
-    var pickedCommands: [AuditItem] { pickedItems.filter { if case .command = $0.removal { true } else { false } } }
-    var pickedTrashSize: Int64 { pickedTrash.reduce(0) { $0 + $1.size } }
+    /// Removed by their own tool when you confirm.
+    var pickedTools: [AuditItem] { pickedItems.filter { $0.command?.runsHere == true } }
+    /// Commands Sweepwell will not run (the tool is missing, or it could take your data with it).
+    var pickedCommands: [AuditItem] { pickedItems.filter { $0.command.map { !$0.runsHere } ?? false } }
+    var pickedRemovable: [AuditItem] { pickedTrash + pickedTools }
+    var pickedRemovableSize: Int64 { pickedRemovable.reduce(0) { $0 + $1.size } }
 
     func scan(keepingReport: Bool = false) {
         guard phase != .scanning, phase != .working else { return }
@@ -38,6 +54,10 @@ final class StorageAuditModel {
             let found = await background { auditor.scan(control: control) }
             guard !control.isCancelled else { phase = report == nil ? .idle : .results; return }
             report = found
+            // UI check: tick items by ID after the scan. Ticking removes nothing.
+            if let ids = ProcessInfo.processInfo.environment["SWEEPWELL_AUDIT_PICK"], !keepingReport {
+                picked.formUnion(ids.split(separator: ",").map(String.init))
+            }
             picked = picked.filter { id in found.items.contains { $0.id == id && $0.removal != .reveal } }
             phase = .results
         }
@@ -52,22 +72,41 @@ final class StorageAuditModel {
         if picked.contains(item.id) { picked.remove(item.id) } else { picked.insert(item.id) }
     }
 
-    /// Picked folders go to the Trash, always: the audit never deletes outright.
-    func moveToTrash() {
-        let items = pickedTrash
-        guard !items.isEmpty else { return }
+    /// Picked folders go to the Trash. Picked tool-managed items (simulator runtimes, Ollama
+    /// models, toolchains…) are removed by their own tool, which is permanent but re-downloadable.
+    func remove() {
+        let trashItems = pickedTrash
+        let toolItems = pickedTools
+        guard !trashItems.isEmpty || !toolItems.isEmpty else { return }
         phase = .working
+        removal = nil
+        toolOutcomes = []
         freeBefore = DiskSpace.startupVolume()?.available
-        let remover = Remover(environment: environment)
-        let requests = items.compactMap { item in item.url.map { RemovalRequest(url: $0, size: item.size, purpose: .auditItem) } }
         Task {
-            let result = await background { remover.remove(requests, mode: .trash) }
-            AppModel.shared.recordSweep(result)
-            removal = result
-            picked.subtract(items.filter { item in result.removed.contains { $0 == item.url } }.map(\.id))
+            if !trashItems.isEmpty {
+                workingOn = "Moving \(trashItems.count) item\(trashItems.count == 1 ? "" : "s") to the Trash…"
+                let remover = Remover(environment: environment)
+                let requests = trashItems.compactMap { item in item.url.map { RemovalRequest(url: $0, size: item.size, purpose: .auditItem) } }
+                let result = await background { remover.remove(requests, mode: .trash) }
+                AppModel.shared.recordSweep(result)
+                removal = result
+                picked.subtract(trashItems.filter { item in result.removed.contains { $0 == item.url } }.map(\.id))
+            }
+            for item in toolItems {
+                guard let command = item.command else { continue }
+                workingOn = "Removing \(item.title)…"
+                let result = await background { StorageAuditor.run(command) }
+                let lastLine = (result.output ?? "").split(separator: "\n").last.map(String.init) ?? ""
+                let message = result.succeeded ? "" : result.timedOut ? "it did not finish within 10 minutes" : (lastLine.isEmpty ? "it failed" : lastLine)
+                toolOutcomes.append(ToolOutcome(id: item.id, title: item.title, size: item.size, succeeded: result.succeeded, message: message))
+                if result.succeeded {
+                    picked.remove(item.id)
+                    AppModel.shared.recordSweep(bytes: item.size)
+                }
+            }
             freeNow = DiskSpace.startupVolume()?.available
             phase = .results
-            scan(keepingReport: true)   // refresh the map, keep the "moved to Trash" card
+            scan(keepingReport: true)   // refresh the map, keep the result card
         }
     }
 
@@ -96,7 +135,7 @@ final class StorageAuditModel {
 }
 
 private extension AuditItem {
-    var command: String? { if case .command(let text) = removal { text } else { nil } }
+    var command: AuditItem.ToolCommand? { if case .command(let command) = removal { command } else { nil } }
 }
 
 // MARK: - View
@@ -118,15 +157,14 @@ struct StorageAuditView: View {
             case .scanning:
                 ScanningView(module: .storageAudit, control: model.control, title: "Mapping your storage…")
             case .working:
-                VStack(spacing: 14) { ProgressView().controlSize(.large); Text("Moving to the Trash…").foregroundStyle(.secondary) }
+                VStack(spacing: 14) { ProgressView().controlSize(.large); Text(model.workingOn).foregroundStyle(.secondary) }
             case .results, .finished:
                 if let report = model.report { results(model, report) }
             }
         } footer: {
             if model.phase == .results, model.report != nil {
-                ActionBar(module: .storageAudit,
-                          actionTitle: model.pickedTrash.isEmpty ? "Move to Trash" : "Move \(model.pickedTrash.count) to Trash · \(Format.bytes(model.pickedTrashSize))",
-                          enabled: !model.pickedTrash.isEmpty) { confirming = true } leading: {
+                ActionBar(module: .storageAudit, actionTitle: actionTitle(model),
+                          enabled: !model.pickedRemovable.isEmpty) { confirming = true } leading: {
                     Button("Low-regret set") { model.pickLowRegret() }.buttonStyle(PillButtonStyle())
                         .help("Pure caches, orphaned simulators and leftover backups: things that rebuild or were never needed")
                     Button("Clear") { model.picked = [] }.buttonStyle(PillButtonStyle()).disabled(model.picked.isEmpty)
@@ -134,19 +172,36 @@ struct StorageAuditView: View {
                 }
             }
         }
-        .confirmationDialog("Move \(model.pickedTrash.count) item\(model.pickedTrash.count == 1 ? "" : "s") to the Trash?",
+        .confirmationDialog(model.pickedTools.isEmpty
+                                ? "Move \(model.pickedTrash.count) item\(model.pickedTrash.count == 1 ? "" : "s") to the Trash?"
+                                : "Remove \(model.pickedRemovable.count) item\(model.pickedRemovable.count == 1 ? "" : "s")?",
                             isPresented: $confirming) {
-            Button("Move to Trash", role: .destructive) { model.moveToTrash() }
+            Button(model.pickedTools.isEmpty ? "Move to Trash" : "Remove", role: .destructive) { model.remove() }
         } message: {
             Text(confirmMessage(model))
         }
     }
 
+    private func actionTitle(_ model: StorageAuditModel) -> String {
+        let items = model.pickedRemovable
+        if items.isEmpty { return "Remove" }
+        let verb = model.pickedTools.isEmpty ? "Move \(items.count) to Trash" : "Remove \(items.count)"
+        return "\(verb) · \(Format.bytes(model.pickedRemovableSize))"
+    }
+
     private func confirmMessage(_ model: StorageAuditModel) -> String {
-        var lines = model.pickedTrash.map { "\($0.id)  \($0.title): \($0.cost)" }
-        let warned = model.pickedTrash.filter { !$0.warnings.isEmpty }
+        var lines: [String] = []
+        if !model.pickedTrash.isEmpty {
+            lines.append("To the Trash (you can put these back; the space returns when you empty the Trash):")
+            lines += model.pickedTrash.map { "\($0.id)  \($0.title): \($0.cost)" }
+        }
+        if !model.pickedTools.isEmpty {
+            if !lines.isEmpty { lines.append("") }
+            lines.append("Removed by their own tool. This is permanent; each can be downloaded again:")
+            lines += model.pickedTools.map { "\($0.id)  \($0.title): \($0.cost)" }
+        }
+        let warned = model.pickedRemovable.filter { !$0.warnings.isEmpty }
         if !warned.isEmpty { lines.append("\nCheck first: " + warned.map { "\($0.id) (\($0.warnings.joined(separator: ", ")))" }.joined(separator: "; ")) }
-        lines.append("\nEverything can be put back from the Trash. The space returns when you empty the Trash.")
         return lines.joined(separator: "\n")
     }
 
@@ -161,7 +216,7 @@ struct StorageAuditView: View {
                         .padding(16)
                         .card()
                 }
-                if let removal = model.removal { afterRemoval(model, removal) }
+                if model.removal != nil || !model.toolOutcomes.isEmpty { afterRemoval(model) }
                 if !model.pickedCommands.isEmpty { commands(model) }
                 ForEach(AuditItem.Group.allCases, id: \.self) { group in
                     let items = report.items(in: group)
@@ -180,8 +235,9 @@ struct StorageAuditView: View {
                 stat("Free now", Format.bytes(disk.available), "of \(Format.bytes(disk.total))")
                 stat("Purgeable", Format.bytes(disk.purgeable), "macOS frees this itself")
             }
-            stat("Removable here", Format.bytes(report.items.filter { $0.removal == .trash }.reduce(0) { $0 + $1.size }),
-                 "folders you can send to the Trash")
+            stat("Removable here", Format.bytes(report.items.filter { $0.removal == .trash || $0.command?.runsHere == true }
+                                                    .reduce(0) { $0 + $1.size }),
+                 "to the Trash, or by the tool that owns it")
             stat("Low-regret", Format.bytes(report.items.filter { $0.recommended && $0.removal != .reveal }.reduce(0) { $0 + $1.size }),
                  "rebuilds by itself")
         }
@@ -198,15 +254,27 @@ struct StorageAuditView: View {
         .card()
     }
 
-    private func afterRemoval(_ model: StorageAuditModel, _ removal: RemovalReport) -> some View {
+    private func afterRemoval(_ model: StorageAuditModel) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Moved \(removal.removed.count) item\(removal.removed.count == 1 ? "" : "s") (\(Format.bytes(removal.bytesFreed))) to the Trash.",
-                  systemImage: "checkmark.circle.fill").font(.callout.weight(.semibold))
-            if !removal.failures.isEmpty {
-                Text(removal.failures.map { "\($0.url.lastPathComponent): \($0.message)" }.joined(separator: "\n"))
-                    .font(.caption).foregroundStyle(Color.warning)
+            if let removal = model.removal {
+                Label("Moved \(removal.removed.count) item\(removal.removed.count == 1 ? "" : "s") (\(Format.bytes(removal.bytesFreed))) to the Trash.",
+                      systemImage: "checkmark.circle.fill").font(.callout.weight(.semibold))
+                if !removal.failures.isEmpty {
+                    Text(removal.failures.map { "\($0.url.lastPathComponent): \($0.message)" }.joined(separator: "\n"))
+                        .font(.caption).foregroundStyle(Color.warning)
+                }
             }
-            Text("The space comes back when you empty the Trash. After that, APFS can take several minutes to report it, so check again before concluding something did not free space.")
+            ForEach(model.toolOutcomes) { outcome in
+                Label(outcome.succeeded ? "Removed \(outcome.title) (\(Format.bytes(outcome.size)))."
+                                        : "Could not remove \(outcome.title): \(outcome.message)",
+                      systemImage: outcome.succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(outcome.succeeded ? Color.primary : Color.warning)
+                    .lineLimit(2)
+            }
+            Text(model.removal == nil
+                 ? "APFS can take several minutes to report freed space, so check again before concluding something did not free space."
+                 : "Space from the Trash comes back when you empty it. After that, APFS can take several minutes to report it, so check again before concluding something did not free space.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(3)
             HStack {
                 if let before = model.freeBefore, let now = model.freeNow {
@@ -223,13 +291,13 @@ struct StorageAuditView: View {
     /// Permanent, tool-driven deletions are the user's to run, one command per line.
     private func commands(_ model: StorageAuditModel) -> some View {
         let picked = model.pickedCommands
-        let all = picked.compactMap(\.command).joined(separator: "\n")
+        let all = picked.compactMap(\.command?.display).joined(separator: "\n")
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 IconDisc(symbol: "terminal.fill", color: Module.storageAudit.colors[1], size: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Commands for you to run").font(.callout.weight(.semibold))
-                    Text("These deletions are permanent, so Sweepwell does not run them. Paste them into Terminal.")
+                    Text("Sweepwell does not run these: the tool is not installed where it can find it, or the command can delete your own data too. Paste them into Terminal.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -238,9 +306,9 @@ struct StorageAuditView: View {
             ForEach(picked) { item in
                 HStack(spacing: 8) {
                     Text(item.id).font(.caption.monospaced().weight(.semibold)).foregroundStyle(.secondary).frame(width: 28, alignment: .leading)
-                    Text(item.command ?? "").font(.caption.monospaced()).textSelection(.enabled).lineLimit(1).truncationMode(.middle)
+                    Text(item.command?.display ?? "").font(.caption.monospaced()).textSelection(.enabled).lineLimit(1).truncationMode(.middle)
                     Spacer()
-                    Button(model.copiedID == item.id ? "Copied" : "Copy") { model.copy(item.command ?? "", id: item.id) }
+                    Button(model.copiedID == item.id ? "Copied" : "Copy") { model.copy(item.command?.display ?? "", id: item.id) }
                         .buttonStyle(.plain).font(.caption.weight(.semibold)).foregroundStyle(Module.storageAudit.accent)
                 }
             }
@@ -349,6 +417,7 @@ private struct AuditRow: View {
                         badge("low-regret", Color.success)
                     }
                     switch item.removal {
+                    case .command(let command) where command.runsHere: badge("removed by \(command.name)", Module.storageAudit.colors[1])
                     case .command: badge("you run it", Module.storageAudit.colors[1])
                     case .reveal: badge("view only", .secondary)
                     case .trash: EmptyView()

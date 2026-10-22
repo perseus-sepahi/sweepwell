@@ -10,7 +10,7 @@ A native Apple silicon Mac cleaner and maintenance app, built with SwiftUI.
 | Large & Old Files | Files over a threshold in your personal folders, filterable by size and last-opened date |
 | Duplicates | Byte-for-byte identical files (size, then 64 KB hash, then full SHA-256) |
 | Space Lens | Squarified treemap of any folder, with drill-down |
-| Storage Audit | Read-only map of hidden caches, VMs, simulators, AI models and toolchains in groups A–F with IDs, sizes and the cost of removing each; folders go to the Trash, permanent deletions are handed over as commands; accounts for space the scan cannot see. Every tool it asks gets a time limit (15 seconds; Xcode, asked alongside the folder sizing, 30); a stuck one is skipped and named in the results |
+| Storage Audit | Read-only map of hidden caches, VMs, simulators, AI models and toolchains in groups A–F with IDs, sizes and the cost of removing each; folders go to the Trash, tool-managed items (simulator runtimes, Ollama models, Rust toolchains, Homebrew formulae…) are removed by their own tool after confirmation, and commands that could take your data with them (docker prune) are handed over to copy; accounts for space the scan cannot see. Every tool it asks gets a time limit (15 seconds; Xcode, asked alongside the folder sizing, 30); a stuck one is skipped and named in the results |
 | Uninstaller | Removes an app together with its `~/Library` support files |
 | Startup & Activity | Launch agents and daemons (flags broken ones), top memory consumers |
 | Maintenance | Flush DNS, free inactive memory, thin snapshots, rebuild Spotlight, reset Quick Look, and more |

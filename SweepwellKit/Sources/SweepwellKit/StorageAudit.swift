@@ -30,11 +30,31 @@ public struct AuditItem: Identifiable, Sendable, Hashable {
         }
     }
 
+    /// A removal command for a tool-managed item: Sweepwell runs it after you confirm, or shows
+    /// it for you to run when the tool cannot be found or the command can take your data with it.
+    public struct ToolCommand: Sendable, Hashable {
+        public let name: String
+        public let executable: String?
+        public let arguments: [String]
+        /// False when Sweepwell must not run it itself.
+        public let runsHere: Bool
+
+        public init(_ name: String, _ arguments: [String], runsHere: Bool = true) {
+            self.name = name
+            self.executable = name == "xcrun" ? "/usr/bin/xcrun" : StorageAuditor.tool(name)
+            self.arguments = arguments
+            self.runsHere = runsHere && executable != nil
+        }
+
+        /// The same command as typed into Terminal.
+        public var display: String { ([name] + arguments.map(StorageAuditor.quote)).joined(separator: " ") }
+    }
+
     public enum Removal: Sendable, Hashable {
         /// A folder Sweepwell can move to the Trash (recoverable).
         case trash
-        /// A permanent, tool-driven deletion: shown for the user to run themselves.
-        case command(String)
+        /// A permanent deletion done by the tool that owns the data (simctl, ollama, rustup…).
+        case command(ToolCommand)
         /// Too risky or too privileged to offer: shown in Finder only.
         case reveal
     }
@@ -261,12 +281,12 @@ public struct StorageAuditor: Sendable {
         for url in children(of: ".android/avd") where url.pathExtension == "avd" {
             let name = url.deletingPathExtension().lastPathComponent
             list.append(Candidate(group: .machines, title: "Android emulator “\(name)”", url: url,
-                                  cost: "Recreate it in Android Studio", removal: .command("avdmanager delete avd -n \(Self.quote(name))")))
+                                  cost: "Recreate it in Android Studio", removal: .command(.init("avdmanager", ["delete", "avd", "-n", name]))))
         }
         list.append(folder(.machines, "Library/Android/sdk/system-images", "Android system images",
                            "Re-download with the SDK Manager in Android Studio", removal: .reveal))
         list.append(folder(.machines, "Library/Containers/com.docker.docker", "Docker Desktop data",
-                           "Unused images and containers are pulled again", removal: .command("docker system prune -a")))
+                           "Unused images and containers are pulled again", removal: .command(.init("docker", ["system", "prune", "-a"], runsHere: false))))
         for (path, title) in [(".colima", "Colima VMs"), (".orbstack", "OrbStack machines"), ("VirtualBox VMs", "VirtualBox VMs"),
                               ("Parallels", "Parallels VMs"), ("Library/Application Support/UTM", "UTM VMs"),
                               ("Library/Containers/com.utmapp.UTM", "UTM VMs (App Store)")] {
@@ -310,7 +330,7 @@ public struct StorageAuditor: Sendable {
                                           url: (device["dataPath"] as? String).map { URL(fileURLWithPath: $0).deletingLastPathComponent() },
                                           size: bytes, minimum: 100 << 20,
                                           cost: "Wipes its installed apps and data; the device stays in Xcode",
-                                          removal: .command("xcrun simctl erase \(udid)"),
+                                          removal: .command(.init("xcrun", ["simctl", "erase", udid])),
                                           warnings: booted ? ["Booted: shut it down first"] : [],
                                           lastUsed: Self.isoDate(device["lastUsedAt"])))
                 }
@@ -319,7 +339,7 @@ public struct StorageAuditor: Sendable {
                 list.append(Candidate(group: .machines, title: "\(unavailable.count) orphaned simulator\(unavailable.count == 1 ? "" : "s")",
                                       url: nil, size: unavailable.bytes, minimum: 0,
                                       cost: "None: their runtime is already gone",
-                                      removal: .command("xcrun simctl delete unavailable"), recommended: true))
+                                      removal: .command(.init("xcrun", ["simctl", "delete", "unavailable"])), recommended: true))
             }
         }
         if let json = probe.ask("/usr/bin/xcrun", ["simctl", "runtime", "list", "-j"], tool: Probe.simulatorService, limit: Probe.simulatorTimeLimit).output?.data(using: .utf8),
@@ -332,7 +352,7 @@ public struct StorageAuditor: Sendable {
                                       url: (runtime["path"] as? String).map { URL(fileURLWithPath: $0) },
                                       size: (runtime["sizeBytes"] as? NSNumber)?.int64Value ?? 0,
                                       cost: "Re-download from Xcode › Settings › Components (several GB)",
-                                      removal: .command("xcrun simctl runtime delete \(id)"),
+                                      removal: .command(.init("xcrun", ["simctl", "runtime", "delete", id])),
                                       lastUsed: Self.isoDate(runtime["lastUsedAt"])))
             }
         }
@@ -349,7 +369,7 @@ public struct StorageAuditor: Sendable {
             let booted = (device["state"] as? NSNumber)?.intValue == 3
             return Candidate(group: .machines, title: "\(name) simulator (\(os))", url: url, minimum: 100 << 20,
                              cost: "Wipes its installed apps and data; the device stays in Xcode",
-                             removal: .command("xcrun simctl erase \(udid)"),
+                             removal: .command(.init("xcrun", ["simctl", "erase", udid])),
                              warnings: booted ? ["Booted: shut it down first"] : [])
         }
     }
@@ -366,7 +386,7 @@ public struct StorageAuditor: Sendable {
                 guard fields.count >= 4, let bytes = Self.parseSize(String(fields[2]), unit: String(fields[3])) else { continue }
                 ollamaListed = true
                 list.append(Candidate(group: .ai, title: "Ollama model \(fields[0])", url: nil, size: bytes,
-                                      cost: "Re-download with ollama pull", removal: .command("ollama rm \(fields[0])")))
+                                      cost: "Re-download with ollama pull", removal: .command(.init("ollama", ["rm", String(fields[0])]))))
             }
         }
         if !ollamaListed {
@@ -405,7 +425,7 @@ public struct StorageAuditor: Sendable {
                                       warnings: ["Default toolchain"]))
             } else {
                 list.append(Candidate(group: .toolchains, title: "Rust \(name)", url: url, cost: "Reinstall with rustup if a project pins it",
-                                      removal: .command("rustup toolchain uninstall \(name)")))
+                                      removal: .command(.init("rustup", ["toolchain", "uninstall", name]))))
             }
         }
         list.append(folder(.toolchains, ".cargo", "Cargo home (installed Rust tools)", "Keep: removing it uninstalls Rust", removal: .reveal))
@@ -418,13 +438,13 @@ public struct StorageAuditor: Sendable {
                     list.append(Candidate(group: .toolchains, title: "Homebrew \(name)", url: cellar.appendingPathComponent(name),
                                           minimum: 200 << 20,
                                           cost: "Check first: brew uses --installed \(name). Other tools or your projects may need it.",
-                                          removal: .command("brew uninstall \(name)")))
+                                          removal: .command(.init("brew", ["uninstall", name]))))
                 }
             }
         }
         for conda in ["miniconda3", "anaconda3", "miniforge3", "mambaforge"] where exists(conda) {
             list.append(folder(.toolchains, "\(conda)/pkgs", "\(conda) package cache", "None; environments keep working",
-                               removal: .command("conda clean -a"), recommended: true))
+                               removal: .command(.init("conda", ["clean", "-a", "-y"])), recommended: true))
         }
         for (path, title, cost) in [
             ("VulkanSDK", "Vulkan SDK", "Re-downloadable; check your shell config for VULKAN_SDK"),
@@ -470,6 +490,17 @@ public struct StorageAuditor: Sendable {
             }
         }
         return list
+    }
+
+    // MARK: Removing with a tool
+
+    /// Runs one picked tool command. Removing a simulator runtime unmounts a disk image and can
+    /// take a minute; nothing here should take ten.
+    public static func run(_ command: AuditItem.ToolCommand) -> Shell.Result {
+        guard command.runsHere, let executable = command.executable else {
+            return Shell.Result(status: -1, output: "Sweepwell does not run this one; copy it into Terminal.")
+        }
+        return Shell.run(executable, command.arguments, timeout: 600)
     }
 
     // MARK: Accounting

@@ -276,7 +276,9 @@ final class ModuleTests: XCTestCase {
         XCTAssertEqual(item("codex-runtimes (~/.cache)")?.group, .caches)
         XCTAssertEqual(item("Hugging Face models")?.group, .ai, "model stores are AI, not cache")
         XCTAssertEqual(item("Lima VM “dev”")?.removal, .trash)
-        XCTAssertEqual(item("Android emulator “Pixel_8”")?.removal, .command("avdmanager delete avd -n Pixel_8"))
+        guard case .command(let command)? = item("Android emulator “Pixel_8”")?.removal else { return XCTFail("not a command") }
+        XCTAssertEqual(command.display, "avdmanager delete avd -n Pixel_8")
+        XCTAssertEqual(command.arguments, ["delete", "avd", "-n", "Pixel_8"])
         XCTAssertEqual(item("Backup copy .antigravity-backup")?.recommended, true)
         XCTAssertEqual(item("Antigravity")?.recommended, false)
         XCTAssertEqual(item("Vulkan SDK")?.warnings, ["Mentioned in your shell config"])
@@ -354,5 +356,26 @@ final class ModuleTests: XCTestCase {
         XCTAssertFalse(result.timedOut)
         XCTAssertTrue(result.succeeded)
         XCTAssertEqual(result.output?.utf8.count, 4 << 20)
+    }
+
+    // MARK: Audit tool commands
+
+    func testToolCommandsShowAsTypedAndOnlyRunWhenAllowed() {
+        let runtime = AuditItem.ToolCommand("xcrun", ["simctl", "runtime", "delete", "AA04E958"])
+        XCTAssertEqual(runtime.display, "xcrun simctl runtime delete AA04E958")
+        XCTAssertEqual(runtime.executable, "/usr/bin/xcrun")
+        XCTAssertTrue(runtime.runsHere)
+
+        XCTAssertEqual(AuditItem.ToolCommand("avdmanager", ["delete", "avd", "-n", "My Phone"]).display,
+                       "avdmanager delete avd -n 'My Phone'")
+
+        // A tool that is not installed, or a command flagged as unsafe, is never run.
+        let missing = AuditItem.ToolCommand("no-such-tool-here", ["rm", "x"])
+        XCTAssertNil(missing.executable)
+        XCTAssertFalse(missing.runsHere)
+        XCTAssertFalse(StorageAuditor.run(missing).succeeded)
+        let prune = AuditItem.ToolCommand("xcrun", ["simctl", "help"], runsHere: false)
+        XCTAssertFalse(prune.runsHere)
+        XCTAssertEqual(StorageAuditor.run(prune).status, -1, "refused without starting the tool")
     }
 }

@@ -204,6 +204,16 @@ extension AppModel {
         ledger.last = Date()
         ledger.save()
     }
+
+    /// Space freed by a tool (a simulator runtime, a model) rather than by moving files.
+    func recordSweep(bytes: Int64) {
+        guard !environment.isFixture, bytes > 0 else { return }
+        ledger.bytes += bytes
+        ledger.sweeps += 1
+        ledger.since = ledger.since ?? Date()
+        ledger.last = Date()
+        ledger.save()
+    }
 }
 
 // MARK: - Trash
