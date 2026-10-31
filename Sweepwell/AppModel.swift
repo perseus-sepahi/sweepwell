@@ -109,7 +109,11 @@ final class AppModel {
 
     /// True while the main window, Settings or the menu bar panel is actually showing.
     static var isAnythingVisible: Bool {
-        NSApp?.windows.contains { window in
+        #if DEBUG
+        // Screenshots for the website: keep the readings live while the window is covered.
+        if ProcessInfo.processInfo.environment["SWEEPWELL_SCREENSHOT"] == "1" { return true }
+        #endif
+        return NSApp?.windows.contains { window in
             window.isVisible && window.occlusionState.contains(.visible)
                 && (window.canBecomeMain || window is NSPanel) && window.frame.height > 100
         } ?? false

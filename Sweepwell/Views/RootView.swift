@@ -103,7 +103,7 @@ struct Sidebar: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             // One compact module, so every section of the list stays visible at the default size.
             VStack(alignment: .leading, spacing: 8) {
-                if model.environment.isFixture {
+                if model.environment.isFixture, ProcessInfo.processInfo.environment["SWEEPWELL_SCREENSHOT"] != "1" {
                     Label("Demo folder", systemImage: "testtube.2")
                         .font(.caption.weight(.semibold)).foregroundStyle(Color.warning)
                         .help(model.environment.home.path)

@@ -77,15 +77,23 @@ button in the menu bar panel (or ⌘Q) stops it. `Sweepwell --login-item-status`
   Keychains, iCloud Drive, Mail and similar are refused even if a scanner bug offered them,
   and a symlinked parent folder cannot redirect a removal.
 - Risky finds (iOS backups, Xcode archives, caches of running apps) are listed but never pre-ticked.
-- No network access, no account, no analytics. Administrator tasks use the standard macOS
-  password dialog; Sweepwell never sees the password.
+- No account, no analytics. A trial never touches the network; a licensed copy fetches the public
+  list of refunded licences once a week. Administrator tasks use the standard macOS password
+  dialog; Sweepwell never sees the password.
+
+## Price
+
+7 days free with everything unlocked, then US$1.99 once for Sweepwell Pro (Stripe, offline Ed25519
+licence keys). Scans, reports, Space Lens and the menu bar panel stay free; anything that cleans,
+removes or shreds asks `ProModel.allowed()` first. See `LAUNCH.md`.
 
 ## Build and install
 
 Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```bash
-scripts/build-release.sh          # → dist/Sweepwell.app (arm64, ad-hoc signed)
+scripts/build-release.sh          # → dist/Sweepwell.app: the owner's copy (ad-hoc signed, always Pro)
+scripts/build-direct.sh           # → macOS/Direct/Sweepwell.dmg: the public build, notarized
 ditto dist/Sweepwell.app /Applications/Sweepwell.app
 open -a Sweepwell
 ```

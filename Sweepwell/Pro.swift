@@ -27,6 +27,8 @@ final class ProModel {
     var paywallShown = false
     var activationError: String?
     var justActivated = false
+    /// A key that arrived by link, waiting for the buyer to press Activate.
+    var pendingKey: String?
 
     init(environment: ScanEnvironment) {
         ledger = ProLedger(environment: environment, publicKey: StoreConfig.licencePublicKey)
@@ -82,18 +84,23 @@ final class ProModel {
             try ledger.activate(raw)
             activationError = nil
             justActivated = true
+            pendingKey = nil
             status = ledger.status()
         } catch {
             activationError = error.localizedDescription
         }
     }
 
-    /// `sweepwell://activate?key=…`, the button on the page buyers land on after paying.
+    /// `sweepwell://activate?key=…`, the button on the page buyers land on after paying. Any web
+    /// page can open this link, so it only fills in the key for the buyer to confirm, and it
+    /// never touches a licence that already works.
     func handle(_ url: URL) {
         guard url.scheme == "sweepwell", url.host == "activate",
-              let key = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "key" })?.value else { return }
+              let key = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "key" })?.value,
+              key.count < 2_000 else { return }
+        refresh()
         showPaywall()
-        activate(key)
+        if !status.isLicensed { pendingKey = key }
     }
 
     func removeLicence() {
@@ -178,6 +185,11 @@ struct ProSheet: View {
         }
         .padding(24)
         .frame(width: 480)
+        .onChange(of: app.pro.pendingKey, initial: true) { _, pending in
+            guard let pending else { return }
+            key = pending
+            showKeyField = true
+        }
     }
 
     private func offer(_ pro: ProModel) -> some View {

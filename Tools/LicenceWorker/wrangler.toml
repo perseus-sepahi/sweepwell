@@ -4,7 +4,7 @@ main = "src/worker.js"
 compatibility_date = "2026-09-01"
 
 [vars]
-PRODUCT_ID = "<stripe product id, prod_...>"   # test-mode id first; the live id when going live
+PRODUCT_ID = "prod_VXXXAUAzrAkZot"
 APP_NAME = "Sweepwell"
 PRO_NAME = "Sweepwell Pro"
 URL_SCHEME = "sweepwell"                          # the app registers <slug>://activate?key=...
@@ -14,4 +14,4 @@ PLATFORM_NOUN = "Mac"                          # Mac, PC, computer, phone...
 # npx wrangler kv namespace create REVOKED  → paste the id it prints
 [[kv_namespaces]]
 binding = "REVOKED"
-id = "<kv namespace id>"
+id = "6f510ff766414f54a202c2a41c6010a6"
