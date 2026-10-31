@@ -81,6 +81,15 @@ struct RootView: View {
 struct Sidebar: View {
     @Environment(AppModel.self) private var model
 
+    /// Website screenshots leave out the demo label.
+    private static var screenshotMode: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["SWEEPWELL_SCREENSHOT"] == "1"
+        #else
+        false
+        #endif
+    }
+
     var body: some View {
         @Bindable var model = model
         List(selection: Binding<Module?>(get: { model.selection }, set: { if let module = $0 { model.selection = module } })) {
@@ -103,7 +112,7 @@ struct Sidebar: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             // One compact module, so every section of the list stays visible at the default size.
             VStack(alignment: .leading, spacing: 8) {
-                if model.environment.isFixture, ProcessInfo.processInfo.environment["SWEEPWELL_SCREENSHOT"] != "1" {
+                if model.environment.isFixture, !Self.screenshotMode {
                     Label("Demo folder", systemImage: "testtube.2")
                         .font(.caption.weight(.semibold)).foregroundStyle(Color.warning)
                         .help(model.environment.home.path)

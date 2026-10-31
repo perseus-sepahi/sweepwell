@@ -6,12 +6,12 @@ import SweepwellKit
 enum StoreConfig {
     /// The Stripe payment link. Do not ship a build until the licence service is deployed and
     /// this link's confirmation redirect points at its /claim page, or buyers pay and get no key.
-    static let checkoutURL: URL? = nil
+    static let checkoutURL = URL(string: "https://buy.stripe.com/removed")
     /// Public half of the Ed25519 key that signs licence keys. The private half lives only in
     /// the licence service's secrets and in ~/.sweepwell on the creator's Mac.
     static let licencePublicKey = "Gz1qGe5ZmZU9vQjJwVsOAX2hlxUy/FqX5XJICMyQVsI="
-    /// The licence service: /revoked lists refunded keys. Nil until deployed.
-    static let licenceService: URL? = nil
+    /// The licence service: /revoked lists refunded keys.
+    static let licenceService = URL(string: "https://sweepwell-licence.perseus-sepahi.workers.dev")
     static let price = "US$1.99"
 }
 
