@@ -60,6 +60,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// `sweepwell://activate?key=…`, from the page buyers land on after paying.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        urls.forEach(AppModel.shared.pro.handle)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppearanceMode.stored.apply()
         if !ScanEnvironmentFlags.isFixture { Self.loginItem.enableByDefaultOnce() }

@@ -47,6 +47,7 @@ final class ShredderModel {
     }
 
     func shred() {
+        guard AppModel.shared.pro.allowed() else { return }
         let targets = items
         guard !targets.isEmpty, phase != .working else { return }
         phase = .working

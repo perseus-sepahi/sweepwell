@@ -75,6 +75,7 @@ final class StorageAuditModel {
     /// Picked folders go to the Trash. Picked tool-managed items (simulator runtimes, Ollama
     /// models, toolchains…) are removed by their own tool, which is permanent but re-downloadable.
     func remove() {
+        guard AppModel.shared.pro.allowed() else { return }
         let trashItems = pickedTrash
         let toolItems = pickedTools
         guard !trashItems.isEmpty || !toolItems.isEmpty else { return }

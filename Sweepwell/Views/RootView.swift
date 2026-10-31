@@ -48,12 +48,15 @@ struct RootView: View {
         .navigationTitle("Sweepwell")
         // The desktop, blurred, behind everything: how much of it shows is the Glass dial.
         .containerBackground(for: .window) { VibrantBackground() }
+        .sheet(isPresented: Bindable(model.pro).paywallShown) { ProSheet().environment(model) }
         .onAppear {
             AppDelegate.openMainWindow = { openWindow(id: "main") }
             AppDelegate.openSettingsWindow = { openSettings() }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refreshAccess()
+            model.pro.refresh()
+            model.pro.checkRevocationIfDue()
         }
     }
 
@@ -105,6 +108,7 @@ struct Sidebar: View {
                         .font(.caption.weight(.semibold)).foregroundStyle(Color.warning)
                         .help(model.environment.home.path)
                 }
+                TrialChip()
                 VStack(alignment: .leading, spacing: 9) {
                     DiskSummary()
                     HStack(spacing: 8) {

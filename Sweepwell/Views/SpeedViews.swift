@@ -196,6 +196,11 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Sweepwell Pro") {
+                LabeledContent(app.pro.summary) {
+                    Button(app.pro.status.unlockedForGood || app.pro.isOwnerBuild ? "Details" : "Get Pro") { app.pro.showPaywall() }
+                }
+            }
             Section("Appearance") {
                 Picker("Theme", selection: $appearance) {
                     ForEach(AppearanceMode.allCases) { Label($0.title, systemImage: $0.symbol).tag($0.rawValue) }
@@ -244,7 +249,7 @@ struct SettingsView: View {
                         Button("Open Settings") { NSWorkspace.shared.open(FullDiskAccess.settingsURL) }
                     }
                 }
-                Text("Sweepwell works entirely on this Mac. It has no account, no analytics and makes no network connections.")
+                Text("Sweepwell works entirely on this Mac. It has no account and no analytics. Its only network use: once you buy Pro, a weekly check of the public list of refunded licences. Your licence is checked offline.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

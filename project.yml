@@ -1,6 +1,6 @@
 name: Sweepwell
 options:
-  bundleIdPrefix: com.perseussepahi
+  bundleIdPrefix: com.williamsepahi
   deploymentTarget:
     macOS: "26.0"
   createIntermediateGroups: true
@@ -30,6 +30,9 @@ targets:
         LSApplicationCategoryType: public.app-category.utilities
         LSMinimumSystemVersion: "26.0"
         NSHumanReadableCopyright: "© 2026 Perseus Sepahi"
+        CFBundleURLTypes:
+          - CFBundleURLName: com.williamsepahi.Sweepwell
+            CFBundleURLSchemes: [sweepwell]
         NSAppleEventsUsageDescription: "Sweepwell asks Finder to move apps that need an administrator password to the Trash."
     entitlements:
       path: Sweepwell/Sweepwell.entitlements
@@ -39,7 +42,7 @@ targets:
         com.apple.security.automation.apple-events: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.perseussepahi.sweepwell
+        PRODUCT_BUNDLE_IDENTIFIER: com.williamsepahi.Sweepwell
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_STYLE: Manual
