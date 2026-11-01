@@ -1,7 +1,10 @@
 # Sweepwell
 
-A native Apple silicon Mac cleaner and maintenance app, built with SwiftUI.
-(Working title was "Mac Maid"; that name is already used by other Mac cleaners.)
+A free, open-source Mac cleaner and maintenance app for Apple silicon, built with SwiftUI.
+
+**[Download Sweepwell](https://github.com/perseus-sepahi/sweepwell/releases/latest/download/Sweepwell.dmg)**: macOS 26 or later, Apple silicon, signed and notarized. Open the DMG, drag Sweepwell to Applications, then turn it on in System Settings ▸ Privacy & Security ▸ Full Disk Access so scans can see everything.
+
+![Sweepwell](docs/screenshots/overview.jpg)
 
 | Module | What it does |
 | --- | --- |
@@ -77,23 +80,15 @@ button in the menu bar panel (or ⌘Q) stops it. `Sweepwell --login-item-status`
   Keychains, iCloud Drive, Mail and similar are refused even if a scanner bug offered them,
   and a symlinked parent folder cannot redirect a removal.
 - Risky finds (iOS backups, Xcode archives, caches of running apps) are listed but never pre-ticked.
-- No account, no analytics. A trial never touches the network; a licensed copy fetches the public
-  list of refunded licences once a week. Administrator tasks use the standard macOS password
-  dialog; Sweepwell never sees the password.
-
-## Price
-
-7 days free with everything unlocked, then US$1.99 once for Sweepwell Pro (Stripe, offline Ed25519
-licence keys). Scans, reports, Space Lens and the menu bar panel stay free; anything that cleans,
-removes or shreds asks `ProModel.allowed()` first. See `LAUNCH.md`.
+- No network access, no account, no analytics. Administrator tasks use the standard macOS
+  password dialog; Sweepwell never sees the password.
 
 ## Build and install
 
-Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+Requires Xcode 26+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```bash
-scripts/build-release.sh          # → dist/Sweepwell.app: the owner's copy (ad-hoc signed, always Pro)
-scripts/build-direct.sh           # → macOS/Direct/Sweepwell.dmg: the public build, notarized
+scripts/build-release.sh          # → dist/Sweepwell.app (arm64, ad-hoc signed)
 ditto dist/Sweepwell.app /Applications/Sweepwell.app
 open -a Sweepwell
 ```
@@ -114,6 +109,12 @@ With `SWEEPWELL_HOME` set the app shows a "Demo folder" badge, only looks inside
 and keeps trashed items in the folder's own `.Trash`. `SWEEPWELL_THEME=light|dark` forces a theme
 for one launch without changing the saved choice.
 
+## Licence and contact
+
+MIT, © 2026 Perseus Sepahi. See [LICENSE](LICENSE). Sweepwell removes and overwrites the files you
+select and comes with no warranty, so keep backups of anything you need. Report bugs in
+[Issues](https://github.com/perseus-sepahi/sweepwell/issues).
+
 ## Layout
 
 - `SweepwellKit/` – Swift package with all scanning and removal logic, plus tests (`swift test`).
@@ -122,6 +123,5 @@ for one launch without changing the saved choice.
 
 ## Not included
 
-No malware scanner (that needs a maintained signature database to be honest), no privileged
-helper (items owned by root are handed to Finder, which asks for a password), and no
-notarization: share builds only after signing with a Developer ID.
+No malware scanner (that needs a maintained signature database to be honest), and no privileged
+helper (items owned by root are handed to Finder, which asks for a password).

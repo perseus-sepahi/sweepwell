@@ -292,7 +292,6 @@ extension AppModel {
     /// Runs macOS's own `purge`, which drops cached files and inactive memory from RAM. It needs
     /// an administrator password, which macOS asks for itself.
     func freeUpRAM() {
-        guard pro.allowed() else { return }
         guard memoryTask.phase == .idle || memoryTask.phase == .confirmCaches else { return }
         memoryTask = MemoryTask(phase: .freeingRAM)
         panelBusy = true
@@ -335,7 +334,6 @@ extension AppModel {
 
     /// Clears the confirmed caches, through the same safety checks as System Junk.
     func clearAppCaches() {
-        guard pro.allowed() else { return }
         guard memoryTask.phase == .confirmCaches else { return }
         let items = memoryTask.caches
         memoryTask.phase = .clearingCaches

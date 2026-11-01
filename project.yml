@@ -30,9 +30,6 @@ targets:
         LSApplicationCategoryType: public.app-category.utilities
         LSMinimumSystemVersion: "26.0"
         NSHumanReadableCopyright: "© 2026 Perseus Sepahi"
-        CFBundleURLTypes:
-          - CFBundleURLName: com.williamsepahi.Sweepwell
-            CFBundleURLSchemes: [sweepwell]
         NSAppleEventsUsageDescription: "Sweepwell asks Finder to move apps that need an administrator password to the Trash."
     entitlements:
       path: Sweepwell/Sweepwell.entitlements

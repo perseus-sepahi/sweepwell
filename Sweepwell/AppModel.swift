@@ -69,13 +69,11 @@ final class AppModel {
     let maintenance = MaintenanceModel()
     let audit = StorageAuditModel()
     let shredder = ShredderModel()
-    let pro: ProModel
 
     private let sampler = SystemSampler()
     private var monitor: Task<Void, Never>?
 
     init() {
-        pro = ProModel(environment: environment)
         junk = JunkModel(environment: environment)
         largeFiles = LargeFilesModel(environment: environment)
         duplicates = DuplicatesModel(environment: environment)

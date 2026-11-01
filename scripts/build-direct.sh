@@ -1,6 +1,6 @@
 #!/bin/bash
-# The public direct-download build: Developer ID signed, notarized and stapled, as
-# macOS/Direct/Sweepwell.dmg. Uses the "notary" keychain profile.
+# The public download: Developer ID signed, notarized and stapled, as macOS/Direct/Sweepwell.dmg.
+# Maintainer only: needs the certificate below and a "notary" keychain profile.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 IDENTITY="Developer ID Application: MOHAMMADREZA SEPAHI (ZY74XX7D42)"
@@ -15,14 +15,6 @@ xcodebuild -project Sweepwell.xcodeproj -scheme Sweepwell -configuration Release
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO OTHER_CODE_SIGN_FLAGS=--timestamp \
     CURRENT_PROJECT_VERSION="$(date +%Y%m%d%H%M)" build | grep -E "error:|BUILD" 
 
-# Read the text once: with pipefail, `strings | grep -q` fails when grep stops reading early.
-TEXT=$(mktemp)
-strings "$APP/Contents/MacOS/Sweepwell" > "$TEXT"
-if grep -q "SWEEPWELL-OWNER-BUILD" "$TEXT"; then echo "REFUSED: owner marker in the binary" >&2; exit 1; fi
-if grep -qE "SWEEPWELL_AS_CUSTOMER|SWEEPWELL_TRIAL_USED|SWEEPWELL_SCREENSHOT" "$TEXT"; then echo "REFUSED: test hooks in the binary" >&2; exit 1; fi
-if ! grep -q "buy.stripe.com" "$TEXT"; then echo "REFUSED: no Stripe checkout link in the binary" >&2; exit 1; fi
-if grep -q "buy.stripe.com/test_" "$TEXT"; then echo "REFUSED: test-mode checkout link" >&2; exit 1; fi
-rm -f "$TEXT"
 codesign --verify --deep --strict "$APP"
 if codesign -d --entitlements - "$APP" 2>/dev/null | grep -q get-task-allow; then echo "REFUSED: get-task-allow" >&2; exit 1; fi
 

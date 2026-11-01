@@ -1,11 +1,11 @@
 #!/bin/bash
-# The owner's own copy: Release, Apple silicon, ad-hoc signed, always Pro (OWNER), into
-# dist/Sweepwell.app. Never distribute this one; scripts/build-direct.sh makes the public build.
+# Builds the Release app for Apple silicon into dist/Sweepwell.app (ad-hoc signed), which needs
+# no Apple developer account. scripts/build-direct.sh makes the signed, notarized public build.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 xcodegen generate
 xcodebuild -project Sweepwell.xcodeproj -scheme Sweepwell -configuration Release \
-    -derivedDataPath build CODE_SIGN_IDENTITY="-" SWIFT_ACTIVE_COMPILATION_CONDITIONS=OWNER build | grep -E "error:|warning: |BUILD" || true
+    -derivedDataPath build CODE_SIGN_IDENTITY="-" build | grep -E "error:|warning: |BUILD" || true
 rm -rf dist/Sweepwell.app
 mkdir -p dist
 ditto build/Build/Products/Release/Sweepwell.app dist/Sweepwell.app

@@ -1,5 +1,0 @@
-{
-  "app": "Sweepwell",
-  "full_price": "1.99",
-  "stripe": {"product_id": "prod_VXXXAUAzrAkZot", "keychain_service": "stripe-secret-key-sweepwell"}
-}

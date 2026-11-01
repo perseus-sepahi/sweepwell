@@ -51,7 +51,6 @@ final class JunkModel {
     }
 
     func clean() {
-        guard AppModel.shared.pro.allowed() else { return }
         let items = selectedItems
         guard !items.isEmpty, phase == .results else { return }
         phase = .working
@@ -143,7 +142,6 @@ final class LargeFilesModel {
     }
 
     func removeSelected() {
-        guard AppModel.shared.pro.allowed() else { return }
         let targets = files.filter { selected.contains($0.id) }
         guard !targets.isEmpty else { return }
         phase = .working
@@ -222,7 +220,6 @@ final class DuplicatesModel {
     }
 
     func removeSelected() {
-        guard AppModel.shared.pro.allowed() else { return }
         var requests: [RemovalRequest] = []
         for group in groups {
             for file in group.files where selected.contains(file.id) {
@@ -303,7 +300,6 @@ final class SpaceLensModel {
     }
 
     func remove(_ node: DiskNode) {
-        guard AppModel.shared.pro.allowed() else { return }
         guard !node.isAggregate, let parent = node.parent else { return }
         let mode = Preferences.removalMode
         let remover = Remover(environment: environment)
@@ -377,7 +373,6 @@ final class UninstallerModel {
     }
 
     func uninstall(_ app: InstalledApp) {
-        guard AppModel.shared.pro.allowed() else { return }
         phase = .working
         let mode = Preferences.removalMode
         let inventory = AppInventory(environment: environment)
@@ -430,7 +425,6 @@ final class StartupModel {
     }
 
     func remove(_ item: LaunchItem) {
-        guard AppModel.shared.pro.allowed() else { return }
         let scanner = LaunchItemScanner(environment: environment)
         let mode = Preferences.removalMode
         Task {
@@ -465,7 +459,6 @@ final class MaintenanceModel {
     var status: [MaintenanceTask: Status] = [:]
 
     func run(_ task: MaintenanceTask) {
-        guard AppModel.shared.pro.allowed() else { return }
         guard status[task] != .running else { return }
         status[task] = .running
         Task {
