@@ -27,6 +27,8 @@ targets:
       path: Sweepwell/Info.plist
       properties:
         CFBundleDisplayName: Sweepwell
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.utilities
         LSMinimumSystemVersion: "26.0"
         NSHumanReadableCopyright: "© 2026 Perseus Sepahi"
