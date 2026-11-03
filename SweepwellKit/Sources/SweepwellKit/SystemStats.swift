@@ -20,6 +20,8 @@ public struct SystemSnapshot: Sendable {
     public var memoryPressure: Double = 0
     /// °C, nil when the sensors are not readable on this Mac.
     public var cpuTemperature: Double?
+    /// Graphics processor use, 0…1. Nil where the driver does not report it.
+    public var gpuUsage: Double?
     /// Bytes per second over the physical network interfaces.
     public var networkIn: Double = 0
     public var networkOut: Double = 0
@@ -63,6 +65,7 @@ public final class SystemSampler: @unchecked Sendable {
         snapshot.thermalState = ProcessInfo.processInfo.thermalState
         snapshot.memoryPressure = MemoryPressure.current() ?? snapshot.memoryFraction
         snapshot.cpuTemperature = thermal?.cpuTemperature()
+        snapshot.gpuUsage = GPUUsage.current()
         readNetwork(into: &snapshot)
         readBatteryHealth(into: &snapshot)
         snapshot.swap = SwapUsage.current()

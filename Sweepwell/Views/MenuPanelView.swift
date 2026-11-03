@@ -27,6 +27,7 @@ struct MenuPanelView: View {
         GlassEffectContainer(spacing: PanelGrid.gap / 3) {
             VStack(spacing: PanelGrid.gap) {
                 statusModule(alerts)
+                LoadModule()
                 HStack(alignment: .top, spacing: PanelGrid.gap) {
                     // Details open below this block, so an opened Disk trades places with
                     // Memory: whichever is open sits on the bottom row, right above its detail.
@@ -511,7 +512,7 @@ private struct ProcessorSquare: View {
                     Spacer()
                     if let t = s.cpuTemperature {
                         Text("\(Int(t.rounded()))°").font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(t >= 90 ? Color.danger : (t >= 70 ? Color.warning : .secondary))
+                            .foregroundStyle(LoadLevel.temperature(t).color)
                     }
                 }
                 Spacer(minLength: 0)
@@ -532,6 +533,63 @@ private struct ProcessorSquare: View {
         .glassModule(RoundedRectangle(cornerRadius: 34, style: .continuous), interactive: true,
                      tint: expanded ? Module.startup.colors[1].opacity(0.35) : nil)
         .help("Processor: show what is using it")
+    }
+}
+
+/// Processor, graphics, memory and temperature side by side, each coloured by how hard it is
+/// working: green, yellow, orange, red.
+private struct LoadModule: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        let s = app.snapshot
+        WideModule {
+            HStack(spacing: 10) {
+                cell("CPU", value: s.cpuUsage, text: percent(s.cpuUsage), level: .usage(s.cpuUsage))
+                if let gpu = s.gpuUsage {
+                    cell("GPU", value: gpu, text: percent(gpu), level: .usage(gpu))
+                } else {
+                    cell("GPU", value: 0, text: "–", level: nil)
+                }
+                cell("RAM", value: s.memoryPressure, text: percent(s.memoryPressure), level: .memory(s.memoryPressure))
+                if let t = s.cpuTemperature {
+                    // The bar spans 30–105 °C, the range a Mac actually lives in.
+                    cell("Temp", value: (t - 30) / 75, text: "\(Int(t.rounded()))°", level: .temperature(t))
+                } else {
+                    cell("Temp", value: 0, text: "–", level: nil)
+                }
+            }
+        }
+        .help(help(s))
+    }
+
+    private func percent(_ fraction: Double) -> String { "\(Int((fraction * 100).rounded()))%" }
+
+    private func cell(_ title: String, value: Double, text: String, level: LoadLevel?) -> some View {
+        let color = level?.color ?? .secondary
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(.secondary)
+            Text(text).font(.system(size: 17, weight: .bold, design: .rounded)).monospacedDigit()
+                .foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.8)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.track)
+                    Capsule().fill(color).frame(width: max(4, proxy.size.width * min(1, max(0, value))))
+                        .opacity(level == nil ? 0 : 1)
+                }
+            }
+            .frame(height: 5)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func help(_ s: SystemSnapshot) -> String {
+        var lines = ["Green: calm · Yellow: busy · Orange: heavy · Red: maxed out",
+                     "CPU and GPU: share of the processor and graphics in use",
+                     "RAM: memory pressure, macOS's own measure (it keeps memory full on purpose)"]
+        lines.append(s.cpuTemperature == nil ? "Temperature: not reported on this Mac" : "Temp: processor temperature")
+        if s.gpuUsage == nil { lines.append("GPU: not reported on this Mac") }
+        return lines.joined(separator: "\n")
     }
 }
 

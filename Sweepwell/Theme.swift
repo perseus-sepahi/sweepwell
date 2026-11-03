@@ -1,4 +1,5 @@
 import SwiftUI
+import SweepwellKit
 import AppKit
 
 // MARK: - Appearance
@@ -92,6 +93,10 @@ extension Color {
     static let warning = Color(day: 0xB46A00, night: 0xFFD60A)
     static let danger = Color(day: 0xD62A3D, night: 0xFF6B6B)
     static let success = Color(day: 0x1F9D55, night: 0x4ADE80)
+    /// The four load colours: green, yellow, orange, red. Day shades are darker so they stay
+    /// readable on light glass.
+    static let loadYellow = Color(day: 0xA88A00, night: 0xFFD60A)
+    static let loadOrange = Color(day: 0xD9650B, night: 0xFF9F0A)
 }
 
 // MARK: - Modules
@@ -304,5 +309,16 @@ struct AuroraBackground: View {
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+extension LoadLevel {
+    var color: Color {
+        switch self {
+        case .calm: .success
+        case .busy: .loadYellow
+        case .heavy: .loadOrange
+        case .critical: .danger
+        }
     }
 }

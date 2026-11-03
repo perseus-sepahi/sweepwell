@@ -378,4 +378,19 @@ final class ModuleTests: XCTestCase {
         XCTAssertFalse(prune.runsHere)
         XCTAssertEqual(StorageAuditor.run(prune).status, -1, "refused without starting the tool")
     }
+
+    // MARK: Load colours
+
+    func testLoadLevelsStepThroughFourColours() {
+        XCTAssertEqual([0.1, 0.5, 0.8, 0.95].map(LoadLevel.usage), [.calm, .busy, .heavy, .critical])
+        XCTAssertEqual([0.3, 0.7, 0.8, 0.99].map(LoadLevel.memory), [.calm, .busy, .heavy, .critical])
+        XCTAssertEqual([45, 70, 85, 98].map(LoadLevel.temperature), [.calm, .busy, .heavy, .critical])
+        XCTAssertEqual(LoadLevel.usage(0.4999), .calm, "boundaries belong to the higher step")
+        XCTAssertEqual(LoadLevel.usage(0.75), .heavy)
+    }
+
+    func testReadsTheGPUOnThisMac() throws {
+        guard let usage = GPUUsage.current() else { throw XCTSkip("this Mac's GPU driver reports no statistics") }
+        XCTAssert((0...1).contains(usage))
+    }
 }

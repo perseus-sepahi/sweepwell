@@ -30,6 +30,8 @@ Clicking the broom in the menu bar opens a status panel:
   uptime and how many watts the whole Mac is drawing.
 - **Heads-up rows** for what actually matters: memory pressure or heavy swap, a nearly full disk (with how much of it is purgeable), overheating, broken startup items and
   battery wear. Each has one action: Quit, Details or Scan.
+- **Load at a glance**: CPU, GPU, RAM (memory pressure) and processor temperature side by side,
+  each green, yellow, orange or red by how hard it is working.
 - **Live vitals**: processor, memory, disk, power and network, each with a graph and its top
   consumer. Clicking a row opens it in place: the facts behind the number (load averages,
   swap, purgeable space, adapter wattage, VPN state, traffic since startup, and so on) and the
